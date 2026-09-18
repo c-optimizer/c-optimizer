@@ -20,22 +20,22 @@ const appliedState = new Map();
  */
 const TWEAKS_CATALOG = [
   {
-    id: 'gaming-priority',
-    category: 'Gaming',
-    title: 'Prioridade de CPU para Jogos',
-    description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
-        revert: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
-      },
-      linux: {
-        apply: `echo "Ajuste de prioridade aplicado (simulado neste SO)"`,
-        revert: `echo "Ajuste de prioridade revertido (simulado neste SO)"`
-      }
+  id: 'gaming-priority',
+  category: 'Gaming',
+  title: 'Prioridade de CPU para Jogos',
+  description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
+  requiresAdmin: true,
+  commands: {
+    win: {
+      apply: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
+      revert: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
+    },
+    linux: {
+      apply: `echo "Ajuste de prioridade aplicado (simulado neste SO)"`,
+      revert: `echo "Ajuste de prioridade revertido (simulado neste SO)"`
     }
-  },
+  }
+},
   {
     id: 'gpu-scheduling',
     category: 'GPU',
@@ -173,14 +173,25 @@ function getPublicCatalog() {
 }
 
 /**
+ * Codifica um script PowerShell em Base64 UTF-16LE, formato exigido
+ * pelo parâmetro -EncodedCommand. Isso evita QUALQUER problema de
+ * escaping de aspas/espaços feito pelo cmd.exe antes de chegar ao PowerShell.
+ */
+function encodePowerShellCommand(command) {
+  return Buffer.from(command, 'utf16le').toString('base64');
+}
+
+/**
  * Executa um comando shell apropriado para a plataforma atual.
- * Windows -> PowerShell | Linux/macOS -> Bash
+ * Windows -> PowerShell (via -EncodedCommand, imune a bugs de quoting do cmd.exe)
+ * Linux/macOS -> Bash
  */
 async function runShellCommand(command) {
   const platform = os.platform(); // 'win32', 'linux', 'darwin'
 
   if (platform === 'win32') {
-    const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -Command "${command.replace(/"/g, '\\"')}"`;
+    const encoded = encodePowerShellCommand(command);
+    const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
     return execAsync(psCommand, { windowsHide: true, timeout: 15000 });
   }
 
