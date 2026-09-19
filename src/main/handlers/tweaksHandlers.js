@@ -6,6 +6,22 @@ const store = require('../store');
 
 const execAsync = util.promisify(exec);
 
+/**
+ * Verifica se o processo atual do Electron já está rodando com privilégios
+ * de administrador no Windows. 'net session' só executa sem erro se o
+ * token do processo estiver elevado.
+ */
+async function isRunningAsAdmin() {
+  if (os.platform() !== 'win32') return true;
+
+  try {
+    await execAsync('net session', { windowsHide: true, timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const TWEAKS_CATALOG = [
   {
     id: 'gaming-priority',
@@ -173,6 +189,19 @@ async function runShellCommand(command) {
   return execAsync(command, { shell: '/bin/bash', timeout: 15000 });
 }
 
+/**
+ * Executa um comando PowerShell elevado via UAC nativo do Windows,
+ * SEM exigir que o app inteiro rode como Administrador.
+ */
+async function runElevatedCommand(command) {
+  const innerEncoded = encodePowerShellCommand(command);
+  const elevateScript = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -EncodedCommand ${innerEncoded}' -Verb RunAs -Wait -WindowStyle Hidden`;
+  const outerEncoded = encodePowerShellCommand(elevateScript);
+  const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${outerEncoded}`;
+
+  return execAsync(psCommand, { windowsHide: true, timeout: 30000 });
+}
+
 function setTweakState(tweakId, enabled) {
   const appliedState = store.get('tweaksApplied', {});
   appliedState[tweakId] = enabled;
@@ -180,6 +209,10 @@ function setTweakState(tweakId, enabled) {
 }
 
 function registerTweaksHandlers() {
+  ipcMain.handle('system:is-admin', async () => {
+    return isRunningAsAdmin();
+  });
+
   ipcMain.handle('tweaks:get-catalog', async () => {
     return getPublicCatalog();
   });
@@ -198,17 +231,26 @@ function registerTweaksHandlers() {
     const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
 
     try {
-      await runShellCommand(commandSet.apply);
+      const needsElevation = tweak.requiresAdmin && platform === 'win32' && !(await isRunningAsAdmin());
+
+      if (needsElevation) {
+        await runElevatedCommand(commandSet.apply);
+      } else {
+        await runShellCommand(commandSet.apply);
+      }
+
       setTweakState(tweakId, true);
       return { success: true, tweakId, enabled: true };
     } catch (error) {
       console.error(`[tweaks:apply] Erro ao aplicar "${tweakId}":`, error.message);
+      const userCancelled = error.message.includes('1223');
+
       return {
         success: false,
         tweakId,
-        error: platform === 'win32'
-          ? 'Falha ao aplicar. Este ajuste pode exigir que o C-Optimizer seja executado como Administrador.'
-          : error.message
+        error: userCancelled
+          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+          : 'Falha ao aplicar este ajuste. Tente novamente.'
       };
     }
   });
@@ -223,17 +265,26 @@ function registerTweaksHandlers() {
     const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
 
     try {
-      await runShellCommand(commandSet.revert);
+      const needsElevation = tweak.requiresAdmin && platform === 'win32' && !(await isRunningAsAdmin());
+
+      if (needsElevation) {
+        await runElevatedCommand(commandSet.revert);
+      } else {
+        await runShellCommand(commandSet.revert);
+      }
+
       setTweakState(tweakId, false);
       return { success: true, tweakId, enabled: false };
     } catch (error) {
       console.error(`[tweaks:revert] Erro ao reverter "${tweakId}":`, error.message);
+      const userCancelled = error.message.includes('1223');
+
       return {
         success: false,
         tweakId,
-        error: platform === 'win32'
-          ? 'Falha ao reverter. Este ajuste pode exigir que o C-Optimizer seja executado como Administrador.'
-          : error.message
+        error: userCancelled
+          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+          : 'Falha ao reverter este ajuste. Tente novamente.'
       };
     }
   });

@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle } from 'lucide-react';
+import { Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
 
-// Mapeamento de ícone por id de tweak — os ícones não podem atravessar o IPC,
-// então associamos aqui no Renderer usando o mesmo id que o Main Process envia.
 const ICON_MAP = {
   'gaming-priority': Gamepad2,
   'gpu-scheduling': CircuitBoard,
@@ -24,17 +22,23 @@ function OptimizationsView() {
   const [activeCategory, setActiveCategory] = useState('Todas');
   const [tweaks, setTweaks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pendingIds, setPendingIds] = useState({}); // { [tweakId]: true } enquanto aplica/reverte
-  const [errorByTweak, setErrorByTweak] = useState({}); // { [tweakId]: 'mensagem de erro' }
+  const [pendingIds, setPendingIds] = useState({});
+  const [errorByTweak, setErrorByTweak] = useState({});
+  const [isAdmin, setIsAdmin] = useState(true); // otimista até a checagem real chegar
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadCatalog() {
+    async function loadInitial() {
       try {
-        const catalog = await window.electronAPI.invoke('tweaks:get-catalog');
+        const [catalog, adminStatus] = await Promise.all([
+          window.electronAPI.invoke('tweaks:get-catalog'),
+          window.electronAPI.invoke('system:is-admin')
+        ]);
+
         if (isMounted) {
           setTweaks(catalog);
+          setIsAdmin(adminStatus);
           setLoading(false);
         }
       } catch (error) {
@@ -43,7 +47,7 @@ function OptimizationsView() {
       }
     }
 
-    loadCatalog();
+    loadInitial();
     return () => {
       isMounted = false;
     };
@@ -57,8 +61,9 @@ function OptimizationsView() {
     });
   }, [search, activeCategory, tweaks]);
 
+  const hasAdminTweaksVisible = filtered.some((tw) => tw.requiresAdmin);
+
   const handleToggle = async (tweakId, nextValue) => {
-    // Bloqueia múltiplos cliques no mesmo card enquanto o comando roda
     setPendingIds((prev) => ({ ...prev, [tweakId]: true }));
     setErrorByTweak((prev) => ({ ...prev, [tweakId]: null }));
 
@@ -112,6 +117,15 @@ function OptimizationsView() {
         </div>
       </div>
 
+      {!isAdmin && hasAdminTweaksVisible && (
+        <div className="flex items-start gap-2.5 bg-c-secondary/10 border border-c-secondary/30 rounded-lg px-4 py-3 text-sm text-slate-300">
+          <ShieldAlert size={18} className="text-c-secondary shrink-0 mt-0.5" />
+          <span>
+            Alguns ajustes abaixo exigem permissão de administrador. Ao ativá-los, o Windows vai exibir uma janela de confirmação (UAC) — basta aceitar para prosseguir.
+          </span>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-slate-500 text-sm py-10 justify-center">
           <Loader2 size={16} className="animate-spin" />
@@ -125,7 +139,7 @@ function OptimizationsView() {
                 icon={ICON_MAP[tweak.id]}
                 title={tweak.title}
                 description={tweak.description}
-                tags={[tweak.category, ...(tweak.requiresAdmin ? ['Admin'] : [])]}
+                tags={[tweak.category, ...(tweak.requiresAdmin && !isAdmin ? ['Requer UAC'] : [])]}
                 enabled={tweak.enabled}
                 onToggle={(value) => handleToggle(tweak.id, value)}
                 meta={pendingIds[tweak.id] ? 'Aplicando...' : ''}

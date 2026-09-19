@@ -8,12 +8,14 @@ const validInvokeChannels = [
   'system:get-info',
   'system:get-optimization-status',
   'system:run-quick-optimize',
+  'system:is-admin',
 
   // Otimizações
   'tweaks:get-catalog',
   'tweaks:apply',
   'tweaks:revert',
   'tweaks:get-applied-state',
+  'tweaks:get-catalog',
 
   // Limpeza do Sistema
   'cleanup:get-targets',
