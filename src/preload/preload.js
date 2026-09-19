@@ -15,7 +15,6 @@ const validInvokeChannels = [
   'tweaks:apply',
   'tweaks:revert',
   'tweaks:get-applied-state',
-  'tweaks:get-catalog',
 
   // Limpeza do Sistema
   'cleanup:get-targets',
@@ -23,15 +22,13 @@ const validInvokeChannels = [
   'cleanup:execute',
   'cleanup:get-last-run',
 
-  // Restauração
+  // Restauração — apenas criação e listagem (não há exclusão/aplicação)
   'restore:list-points',
   'restore:create-point',
-  'restore:apply-point',
-  'restore:delete-point',
 
-  // Apps / Bloatware
+  // Apps / Bloatware — remoção em lote via toggles
   'apps:list-installed',
-  'apps:uninstall',
+  'apps:uninstall-batch',
 
   // Configurações
   'settings:get',
@@ -63,7 +60,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     if (validOnChannels.includes(channel)) {
       const subscription = (_event, ...args) => callback(...args);
       ipcRenderer.on(channel, subscription);
-      // Retorna função de "unsubscribe" para uso em useEffect cleanup
       return () => ipcRenderer.removeListener(channel, subscription);
     }
     return () => {};

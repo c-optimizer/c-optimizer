@@ -1,27 +1,16 @@
 const { ipcMain } = require('electron');
-const { exec } = require('child_process');
 const os = require('os');
-const util = require('util');
 const store = require('../store');
-
-const execAsync = util.promisify(exec);
+const { runShellCommand, runCommandSmart, isRunningAsAdmin } = require('../utils/shell');
 
 /**
- * Verifica se o processo atual do Electron já está rodando com privilégios
- * de administrador no Windows. 'net session' só executa sem erro se o
- * token do processo estiver elevado.
+ * Catálogo de tweaks. Cada tweak tem:
+ * - id: identificador único (usado pela UI)
+ * - category: para filtro na OptimizationsView
+ * - title/description: exibidos na UI (fonte única de verdade)
+ * - commands.win / commands.linux: { apply, revert } — comandos shell
+ * - requiresAdmin: se true, dispara elevação sob demanda quando necessário
  */
-async function isRunningAsAdmin() {
-  if (os.platform() !== 'win32') return true;
-
-  try {
-    await execAsync('net session', { windowsHide: true, timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const TWEAKS_CATALOG = [
   {
     id: 'gaming-priority',
@@ -161,6 +150,10 @@ const TWEAKS_CATALOG = [
   }
 ];
 
+/**
+ * Retorna o catálogo sem os comandos shell (a UI não precisa e não deveria
+ * ter acesso a esses detalhes de implementação por segurança/superfície de ataque).
+ */
 function getPublicCatalog() {
   const appliedState = store.get('tweaksApplied', {});
   return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin }) => ({
@@ -171,35 +164,6 @@ function getPublicCatalog() {
     requiresAdmin,
     enabled: appliedState[id] || false
   }));
-}
-
-function encodePowerShellCommand(command) {
-  return Buffer.from(command, 'utf16le').toString('base64');
-}
-
-async function runShellCommand(command) {
-  const platform = os.platform();
-
-  if (platform === 'win32') {
-    const encoded = encodePowerShellCommand(command);
-    const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
-    return execAsync(psCommand, { windowsHide: true, timeout: 15000 });
-  }
-
-  return execAsync(command, { shell: '/bin/bash', timeout: 15000 });
-}
-
-/**
- * Executa um comando PowerShell elevado via UAC nativo do Windows,
- * SEM exigir que o app inteiro rode como Administrador.
- */
-async function runElevatedCommand(command) {
-  const innerEncoded = encodePowerShellCommand(command);
-  const elevateScript = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -EncodedCommand ${innerEncoded}' -Verb RunAs -Wait -WindowStyle Hidden`;
-  const outerEncoded = encodePowerShellCommand(elevateScript);
-  const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${outerEncoded}`;
-
-  return execAsync(psCommand, { windowsHide: true, timeout: 30000 });
 }
 
 function setTweakState(tweakId, enabled) {
@@ -231,20 +195,12 @@ function registerTweaksHandlers() {
     const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
 
     try {
-      const needsElevation = tweak.requiresAdmin && platform === 'win32' && !(await isRunningAsAdmin());
-
-      if (needsElevation) {
-        await runElevatedCommand(commandSet.apply);
-      } else {
-        await runShellCommand(commandSet.apply);
-      }
-
+      await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, true);
       return { success: true, tweakId, enabled: true };
     } catch (error) {
       console.error(`[tweaks:apply] Erro ao aplicar "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223');
-
       return {
         success: false,
         tweakId,
@@ -265,20 +221,12 @@ function registerTweaksHandlers() {
     const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
 
     try {
-      const needsElevation = tweak.requiresAdmin && platform === 'win32' && !(await isRunningAsAdmin());
-
-      if (needsElevation) {
-        await runElevatedCommand(commandSet.revert);
-      } else {
-        await runShellCommand(commandSet.revert);
-      }
-
+      await runCommandSmart(commandSet.revert, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, false);
       return { success: true, tweakId, enabled: false };
     } catch (error) {
       console.error(`[tweaks:revert] Erro ao reverter "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223');
-
       return {
         success: false,
         tweakId,
