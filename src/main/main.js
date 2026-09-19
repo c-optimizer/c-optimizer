@@ -2,6 +2,8 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
+const { registerCleanupHandlers } = require('./handlers/cleanupHandlers');
+const { registerSettingsHandlers } = require('./handlers/settingsHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -32,6 +34,8 @@ function createWindow() {
 
   registerSystemHandlers(mainWindow);
   registerTweaksHandlers();
+  registerCleanupHandlers();
+  registerSettingsHandlers();
 
   mainWindow.on('closed', () => {
     stopStatsStreaming();

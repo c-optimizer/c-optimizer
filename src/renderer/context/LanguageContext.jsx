@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 
 const translations = {
   'pt-BR': {
@@ -250,6 +250,31 @@ const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
   const [language, setLanguage] = useState('pt-BR');
+  const [languageLoaded, setLanguageLoaded] = useState(false);
+
+  // Carrega o idioma persistido assim que o app abre,
+  // independente de qual view está ativa no momento.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPersistedLanguage() {
+      try {
+        const savedLanguage = await window.electronAPI.invoke('settings:get-language');
+        if (isMounted && savedLanguage) {
+          setLanguage(savedLanguage);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar idioma salvo:', error);
+      } finally {
+        if (isMounted) setLanguageLoaded(true);
+      }
+    }
+
+    loadPersistedLanguage();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const t = useMemo(() => {
     return (path) => {
@@ -263,7 +288,7 @@ export function LanguageProvider({ children }) {
   }, [language]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t, languageLoaded }}>
       {children}
     </LanguageContext.Provider>
   );

@@ -2,40 +2,28 @@ const { ipcMain } = require('electron');
 const { exec } = require('child_process');
 const os = require('os');
 const util = require('util');
+const store = require('../store');
 
 const execAsync = util.promisify(exec);
 
-// Estado em memória de quais tweaks estão ativos.
-// Na Etapa 3 isso será persistido em disco via electron-store,
-// para sobreviver a reinicializações do app.
-const appliedState = new Map();
-
-/**
- * Catálogo de tweaks. Cada tweak tem:
- * - id: identificador único (usado pela UI)
- * - category: para filtro na OptimizationsView
- * - title/description: exibidos na UI (mantidos aqui para fonte única de verdade)
- * - commands.win / commands.linux: { apply, revert } — comandos shell
- * - requiresAdmin: se true, a UI pode avisar o usuário
- */
 const TWEAKS_CATALOG = [
   {
-  id: 'gaming-priority',
-  category: 'Gaming',
-  title: 'Prioridade de CPU para Jogos',
-  description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
-  requiresAdmin: true,
-  commands: {
-    win: {
-      apply: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
-      revert: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
-    },
-    linux: {
-      apply: `echo "Ajuste de prioridade aplicado (simulado neste SO)"`,
-      revert: `echo "Ajuste de prioridade revertido (simulado neste SO)"`
+    id: 'gaming-priority',
+    category: 'Gaming',
+    title: 'Prioridade de CPU para Jogos',
+    description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
+    requiresAdmin: true,
+    commands: {
+      win: {
+        apply: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
+        revert: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
+      },
+      linux: {
+        apply: `echo "Ajuste de prioridade aplicado (simulado neste SO)"`,
+        revert: `echo "Ajuste de prioridade revertido (simulado neste SO)"`
+      }
     }
-  }
-},
+  },
   {
     id: 'gpu-scheduling',
     category: 'GPU',
@@ -78,7 +66,7 @@ const TWEAKS_CATALOG = [
     requiresAdmin: true,
     commands: {
       win: {
-        apply: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0 -ErrorAction SilentlyContinue; if (-not (Test-Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection")) { New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0 }`,
+        apply: `if (-not (Test-Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection")) { New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0`,
         revert: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 1 -ErrorAction SilentlyContinue`
       },
       linux: {
@@ -157,37 +145,24 @@ const TWEAKS_CATALOG = [
   }
 ];
 
-/**
- * Retorna o catálogo sem os comandos shell (a UI não precisa e não deveria
- * ter acesso a esses detalhes de implementação por segurança/superfície de ataque).
- */
 function getPublicCatalog() {
+  const appliedState = store.get('tweaksApplied', {});
   return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin }) => ({
     id,
     category,
     title,
     description,
     requiresAdmin,
-    enabled: appliedState.get(id) || false
+    enabled: appliedState[id] || false
   }));
 }
 
-/**
- * Codifica um script PowerShell em Base64 UTF-16LE, formato exigido
- * pelo parâmetro -EncodedCommand. Isso evita QUALQUER problema de
- * escaping de aspas/espaços feito pelo cmd.exe antes de chegar ao PowerShell.
- */
 function encodePowerShellCommand(command) {
   return Buffer.from(command, 'utf16le').toString('base64');
 }
 
-/**
- * Executa um comando shell apropriado para a plataforma atual.
- * Windows -> PowerShell (via -EncodedCommand, imune a bugs de quoting do cmd.exe)
- * Linux/macOS -> Bash
- */
 async function runShellCommand(command) {
-  const platform = os.platform(); // 'win32', 'linux', 'darwin'
+  const platform = os.platform();
 
   if (platform === 'win32') {
     const encoded = encodePowerShellCommand(command);
@@ -195,8 +170,13 @@ async function runShellCommand(command) {
     return execAsync(psCommand, { windowsHide: true, timeout: 15000 });
   }
 
-  // Linux / macOS
   return execAsync(command, { shell: '/bin/bash', timeout: 15000 });
+}
+
+function setTweakState(tweakId, enabled) {
+  const appliedState = store.get('tweaksApplied', {});
+  appliedState[tweakId] = enabled;
+  store.set('tweaksApplied', appliedState);
 }
 
 function registerTweaksHandlers() {
@@ -205,7 +185,7 @@ function registerTweaksHandlers() {
   });
 
   ipcMain.handle('tweaks:get-applied-state', async () => {
-    return Object.fromEntries(appliedState);
+    return store.get('tweaksApplied', {});
   });
 
   ipcMain.handle('tweaks:apply', async (_event, tweakId) => {
@@ -219,7 +199,7 @@ function registerTweaksHandlers() {
 
     try {
       await runShellCommand(commandSet.apply);
-      appliedState.set(tweakId, true);
+      setTweakState(tweakId, true);
       return { success: true, tweakId, enabled: true };
     } catch (error) {
       console.error(`[tweaks:apply] Erro ao aplicar "${tweakId}":`, error.message);
@@ -244,7 +224,7 @@ function registerTweaksHandlers() {
 
     try {
       await runShellCommand(commandSet.revert);
-      appliedState.set(tweakId, false);
+      setTweakState(tweakId, false);
       return { success: true, tweakId, enabled: false };
     } catch (error) {
       console.error(`[tweaks:revert] Erro ao reverter "${tweakId}":`, error.message);
