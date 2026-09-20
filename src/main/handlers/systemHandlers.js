@@ -1,14 +1,10 @@
-const { ipcMain } = require('electron');
+const { ipcMain, BrowserWindow } = require('electron');
 const si = require('systeminformation');
 const { isRunningAsAdmin } = require('../utils/shell');
 
 const STATS_INTERVAL_MS = 2000;
 let statsIntervalHandle = null;
 
-/**
- * Coleta um snapshot atual de CPU, RAM, Disco e GPU.
- * Retorna valores já formatados (percentuais e GB) prontos para a UI.
- */
 async function collectStats() {
   const [cpuLoad, mem, fsSize, graphics] = await Promise.all([
     si.currentLoad(),
@@ -17,18 +13,14 @@ async function collectStats() {
     si.graphics()
   ]);
 
-  // CPU
   const cpuPercent = Math.round(cpuLoad.currentLoad);
 
-  // RAM
   const ramTotalGB = mem.total / (1024 ** 3);
   const ramUsedGB = (mem.total - mem.available) / (1024 ** 3);
   const ramPercent = Math.round((ramUsedGB / ramTotalGB) * 100);
 
-  // Armazenamento — filtra apenas discos físicos relevantes,
-  // ignorando partições de recuperação/EFI e volumes de rede/virtuais
   const relevantDisks = fsSize.filter((disk) => {
-    const isTiny = disk.size < 1024 ** 3; // menor que 1 GB (recovery/EFI)
+    const isTiny = disk.size < 1024 ** 3;
     const isNetworkOrVirtual = disk.type === 'network' || disk.mount?.startsWith('\\\\');
     return !isTiny && !isNetworkOrVirtual;
   });
@@ -39,7 +31,6 @@ async function collectStats() {
   const storageUsedGB = usedStorage / (1024 ** 3);
   const storagePercent = storageTotalGB > 0 ? Math.round((storageUsedGB / storageTotalGB) * 100) : 0;
 
-  // GPU — usa a primeira GPU dedicada/detectada; fallback para controller[0]
   const gpuController = graphics.controllers?.[0];
   let gpuPercent = 0;
   if (gpuController && typeof gpuController.utilizationGpu === 'number') {
@@ -49,12 +40,8 @@ async function collectStats() {
   }
 
   return {
-    cpu: {
-      percent: cpuPercent
-    },
-    gpu: {
-      percent: gpuPercent
-    },
+    cpu: { percent: cpuPercent },
+    gpu: { percent: gpuPercent },
     ram: {
       percent: ramPercent,
       usedGB: Number(ramUsedGB.toFixed(1)),
@@ -69,10 +56,6 @@ async function collectStats() {
   };
 }
 
-/**
- * Coleta dados estáticos: modelo de CPU, GPU e informações do SO.
- * Chamado uma única vez (não muda em tempo real).
- */
 async function collectStaticInfo() {
   const [cpu, graphics, osInfo, mem] = await Promise.all([
     si.cpu(),
@@ -93,7 +76,7 @@ async function collectStaticInfo() {
     gpu: {
       model: gpuController?.model || 'GPU não detectada',
       vendor: gpuController?.vendor || '',
-      vram: gpuController?.vram ? Math.round(gpuController.vram / 1024) : null // vram vem em MB -> GB
+      vram: gpuController?.vram ? Math.round(gpuController.vram / 1024) : null
     },
     ram: {
       totalGB: Number((mem.total / (1024 ** 3)).toFixed(1))
@@ -109,44 +92,36 @@ async function collectStaticInfo() {
   };
 }
 
-/**
- * Registra todos os handlers IPC relacionados a telemetria de sistema
- * e inicia o loop de streaming de estatísticas em tempo real.
- *
- * @param {import('electron').BrowserWindow} mainWindow - janela principal, usada para enviar updates via webContents.send
- */
-function registerSystemHandlers(mainWindow) {
-  // Handler para verificar se o app possui privilégios de Administrador
+function registerSystemHandlers() {
+  console.log('>>> REGISTRANDO SYSTEM HANDLERS DO IPC <<<');
+
   ipcMain.handle('system:is-admin', async () => {
     try {
       return isRunningAsAdmin();
     } catch (error) {
-      console.error('[system:is-admin] Erro ao verificar privilégios:', error);
+      console.error('[system:is-admin] Erro:', error);
       return false;
     }
   });
 
-  // Snapshot único sob demanda (ex: refresh manual, ou primeira carga da Dashboard)
   ipcMain.handle('system:get-stats', async () => {
     try {
       return await collectStats();
     } catch (error) {
-      console.error('[system:get-stats] Erro ao coletar telemetria:', error);
+      console.error('[system:get-stats] Erro:', error);
       return { error: error.message };
     }
   });
 
-  // Dados estáticos (modelo de CPU/GPU, SO) — buscados uma vez pela UI
   ipcMain.handle('system:get-info', async () => {
     try {
       return await collectStaticInfo();
     } catch (error) {
-      console.error('[system:get-info] Erro ao coletar info estática:', error);
+      console.error('[system:get-info] Erro:', error);
       return { error: error.message };
     }
   });
 
-  // Placeholder de status de otimização
   ipcMain.handle('system:get-optimization-status', async () => {
     return {
       score: 76,
@@ -154,28 +129,23 @@ function registerSystemHandlers(mainWindow) {
     };
   });
 
-  // Inicia o streaming de telemetria em tempo real para o Renderer
-  startStatsStreaming(mainWindow);
+  startStatsStreaming();
 }
 
-/**
- * Envia 'system:stats-update' periodicamente para o Renderer via webContents.send.
- * Isso alimenta a Dashboard sem que o React precise ficar chamando invoke em loop.
- */
-function startStatsStreaming(mainWindow) {
+function startStatsStreaming() {
   if (statsIntervalHandle) {
     clearInterval(statsIntervalHandle);
   }
 
   statsIntervalHandle = setInterval(async () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      clearInterval(statsIntervalHandle);
+    const focusedWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    if (!focusedWindow || focusedWindow.isDestroyed()) {
       return;
     }
 
     try {
       const stats = await collectStats();
-      mainWindow.webContents.send('system:stats-update', stats);
+      focusedWindow.webContents.send('system:stats-update', stats);
     } catch (error) {
       console.error('[system:stats-update] Erro ao enviar telemetria:', error);
     }

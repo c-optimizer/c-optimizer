@@ -2,12 +2,6 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runCommandSmart } = require('../utils/shell');
 
-/**
- * Catálogo curado de bloatware comum do Windows. Só pacotes desta lista
- * podem aparecer na UI e ser removidos — isso evita expor (e arriscar
- * desinstalar) componentes de sistema essenciais que o Get-AppxPackage
- * bruto também retornaria.
- */
 const BLOATWARE_CATALOG = [
   { match: 'Microsoft.XboxGamingOverlay', label: 'Xbox Game Bar' },
   { match: 'Microsoft.XboxApp', label: 'Xbox Console Companion' },
@@ -80,7 +74,6 @@ function registerAppsHandlers() {
       return { success: false, error: 'Pacote inválido.' };
     }
 
-    // -AllUsers exige privilégio de administrador
     const script = `Remove-AppxPackage -Package '${packageFullName.replace(/'/g, "''")}' -AllUsers`;
 
     try {
@@ -88,7 +81,7 @@ function registerAppsHandlers() {
       return { success: true, packageFullName };
     } catch (error) {
       console.error('[apps:uninstall] Erro:', error.message);
-      const userCancelled = error.message.includes('1223');
+      const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false,
         error: userCancelled

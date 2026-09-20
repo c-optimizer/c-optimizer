@@ -5,34 +5,38 @@ const os = require('os');
 
 /**
  * Executa um script PowerShell criando um arquivo temporário .ps1
- * para evitar falsos-positivos de antivirus com -EncodedCommand.
+ * para evitar falsos-positivos de antivírus com -EncodedCommand.
  */
 function runPowerShellScript(scriptContent, options = {}) {
   return new Promise((resolve, reject) => {
-    // Cria um nome de arquivo temporário único
     const tempFileName = `c_opt_${Date.now()}_${Math.random().toString(36).substring(7)}.ps1`;
     const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
     try {
-      // Escreve o script no arquivo .ps1 com codificação UTF8
       fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
 
       const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempFilePath}"`;
 
       exec(command, options, (error, stdout, stderr) => {
-        // Garante a remoção do arquivo temporário após execução
         fs.unlink(tempFilePath, () => {});
 
         if (error) {
           return reject(error);
         }
-        resolve(stdout ? stdout.trim() : '');
+        resolve({ stdout: stdout ? stdout.trim() : '', stderr: stderr ? stderr.trim() : '' });
       });
     } catch (err) {
       fs.unlink(tempFilePath, () => {});
       reject(err);
     }
   });
+}
+
+/**
+ * Alias para manter compatibilidade com módulos que chamam runShellCommand.
+ */
+function runShellCommand(scriptContent, timeoutMs = 20000) {
+  return runPowerShellScript(scriptContent, { timeout: timeoutMs });
 }
 
 /**
@@ -46,7 +50,6 @@ function runElevatedCommand(scriptContent) {
     try {
       fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
 
-      // Executa o script temporário via RunAs (UAC)
       const psArgs = [
         '-NoProfile',
         '-ExecutionPolicy', 'Bypass',
@@ -61,7 +64,6 @@ function runElevatedCommand(scriptContent) {
         if (code === 0) {
           resolve({ success: true });
         } else {
-          // Trata código de erro 1223 (Cancelado pelo usuário no UAC)
           reject(new Error(`O comando elevado falhou ou foi cancelado (Código: ${code})`));
         }
       });
@@ -78,6 +80,19 @@ function runElevatedCommand(scriptContent) {
 }
 
 /**
+ * Executa o comando de forma inteligente:
+ * Se exigir privilégios de Admin e o app não estiver em modo Admin, solicita UAC (runElevatedCommand).
+ * Caso contrário, executa direto via runPowerShellScript.
+ */
+async function runCommandSmart(scriptContent, requiresAdmin = false, timeoutMs = 20000) {
+  if (requiresAdmin && !isRunningAsAdmin()) {
+    return await runElevatedCommand(scriptContent);
+  } else {
+    return await runShellCommand(scriptContent, timeoutMs);
+  }
+}
+
+/**
  * Verifica se a aplicação está sendo executada como Administrador
  */
 function isRunningAsAdmin() {
@@ -91,6 +106,8 @@ function isRunningAsAdmin() {
 
 module.exports = {
   runPowerShellScript,
+  runShellCommand,
   runElevatedCommand,
+  runCommandSmart,
   isRunningAsAdmin
 };

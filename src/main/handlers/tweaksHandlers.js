@@ -1,16 +1,8 @@
 const { ipcMain } = require('electron');
 const os = require('os');
 const store = require('../store');
-const { runPowerShellScript, runElevatedCommand, isRunningAsAdmin } = require('../utils/shell');
+const { runCommandSmart } = require('../utils/shell');
 
-/**
- * Catálogo de tweaks. Cada tweak tem:
- * - id: identificador único (usado pela UI)
- * - category: para filtro na OptimizationsView
- * - title/description: exibidos na UI (fonte única de verdade)
- * - commands.win / commands.linux: { apply, revert } — comandos shell
- * - requiresAdmin: se true, dispara elevação sob demanda quando necessário
- */
 const TWEAKS_CATALOG = [
   {
     id: 'gaming-priority',
@@ -150,10 +142,6 @@ const TWEAKS_CATALOG = [
   }
 ];
 
-/**
- * Retorna o catálogo sem os comandos shell (a UI não precisa e não deveria
- * ter acesso a esses detalhes de implementação por segurança/superfície de ataque).
- */
 function getPublicCatalog() {
   const appliedState = store.get('tweaksApplied', {});
   return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin }) => ({
@@ -173,10 +161,6 @@ function setTweakState(tweakId, enabled) {
 }
 
 function registerTweaksHandlers() {
-  ipcMain.handle('system:is-admin', async () => {
-    return isRunningAsAdmin();
-  });
-
   ipcMain.handle('tweaks:get-catalog', async () => {
     return getPublicCatalog();
   });
@@ -200,7 +184,7 @@ function registerTweaksHandlers() {
       return { success: true, tweakId, enabled: true };
     } catch (error) {
       console.error(`[tweaks:apply] Erro ao aplicar "${tweakId}":`, error.message);
-      const userCancelled = error.message.includes('1223');
+      const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false,
         tweakId,
@@ -226,7 +210,7 @@ function registerTweaksHandlers() {
       return { success: true, tweakId, enabled: false };
     } catch (error) {
       console.error(`[tweaks:revert] Erro ao reverter "${tweakId}":`, error.message);
-      const userCancelled = error.message.includes('1223');
+      const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false,
         tweakId,

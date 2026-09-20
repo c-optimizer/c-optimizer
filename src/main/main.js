@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
 const { registerCleanupHandlers } = require('./handlers/cleanupHandlers');
@@ -30,22 +31,18 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
-  // Registra handlers que precisam da referência direta da janela
-  registerSystemHandlers(mainWindow);
-
   mainWindow.on('closed', () => {
-    stopStatsStreaming();
     mainWindow = null;
   });
 }
 
 app.whenReady().then(() => {
-  // Registra todos os handlers do IPC uma única vez ao iniciar o aplicativo
+  // REGISTRA TODOS OS HANDLERS ANTES DE CARREGAR A INTERFACE
+  registerSystemHandlers();
   registerTweaksHandlers();
   registerCleanupHandlers();
   registerSettingsHandlers();
