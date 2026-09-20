@@ -6,6 +6,7 @@ const { registerCleanupHandlers } = require('./handlers/cleanupHandlers');
 const { registerSettingsHandlers } = require('./handlers/settingsHandlers');
 const { registerRestoreHandlers } = require('./handlers/restoreHandlers');
 const { registerAppsHandlers } = require('./handlers/appsHandlers');
+const { registerAuthHandlers } = require('./handlers/authHandlers'); // <-- novo
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -40,6 +41,7 @@ function createWindow() {
   registerSettingsHandlers();
   registerRestoreHandlers();
   registerAppsHandlers();
+  registerAuthHandlers(); // <-- novo
 
   mainWindow.on('closed', () => {
     stopStatsStreaming();

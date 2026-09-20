@@ -134,3 +134,11 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+
+# Pastas de Build e Saída do Executável
+release/
+dist/
+build/
+win-unpacked/
+*.exe
