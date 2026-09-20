@@ -1,11 +1,10 @@
 const { ipcMain } = require('electron');
 const { runPowerShellScript, runElevatedCommand } = require('../utils/shell');
 
-function setupRestoreHandlers() {
-  // 1. Checa status e lista os pontos
+// 1. O nome da função aqui deve ser registerRestoreHandlers
+function registerRestoreHandlers() {
   ipcMain.handle('restore:list-points', async () => {
     try {
-      // Script resiliente para listar os pontos convertidos para ISO Date
       const script = `
         try {
           $points = Get-ComputerRestorePoint -ErrorAction Stop
@@ -19,7 +18,6 @@ function setupRestoreHandlers() {
               13 { "Restauração Anterior" }
               default { "Automático" }
             }
-            # Converte formato de data do WMI (WMI Date / ManagementDateTime)
             $dt = [System.Management.ManagementDateTimeConverter]::ToDateTime($p.CreationTime)
             $result += @{
               id = $p.SequenceNumber
@@ -39,7 +37,7 @@ function setupRestoreHandlers() {
       if (!output || output.startsWith("ERROR:")) {
         return {
           success: false,
-          error: output ? output.replace("ERROR: ", "") : "Não foi possível listar os pontos de restauração. A Proteção do Sistema pode estar desativada."
+          error: output ? output.replace("ERROR: ", "") : "Não foi possível listar os pontos de restauração."
         };
       }
 
@@ -58,7 +56,6 @@ function setupRestoreHandlers() {
     }
   });
 
-  // 2. Habilita a Proteção do Sistema no Disco C:
   ipcMain.handle('restore:enable-protection', async () => {
     try {
       const script = `Enable-ComputerRestore -Drive "C:\\"`;
@@ -69,7 +66,6 @@ function setupRestoreHandlers() {
     }
   });
 
-  // 3. Cria Ponto de Restauração Elevado
   ipcMain.handle('restore:create-point', async (_, description) => {
     try {
       const desc = description || "Backup de Segurança - C-Optimizer";
@@ -82,4 +78,5 @@ function setupRestoreHandlers() {
   });
 }
 
-module.exports = { setupRestoreHandlers };
+// 2. Exportação deve bater com a função acima
+module.exports = { registerRestoreHandlers };

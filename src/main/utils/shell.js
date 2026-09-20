@@ -1,4 +1,4 @@
-const { exec, spawn } = require('child_process');
+const { exec, spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -77,7 +77,20 @@ function runElevatedCommand(scriptContent) {
   });
 }
 
+/**
+ * Verifica se a aplicação está sendo executada como Administrador
+ */
+function isRunningAsAdmin() {
+  try {
+    execSync('net session', { stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 module.exports = {
   runPowerShellScript,
-  runElevatedCommand
+  runElevatedCommand,
+  isRunningAsAdmin
 };

@@ -6,7 +6,7 @@ const { registerCleanupHandlers } = require('./handlers/cleanupHandlers');
 const { registerSettingsHandlers } = require('./handlers/settingsHandlers');
 const { registerRestoreHandlers } = require('./handlers/restoreHandlers');
 const { registerAppsHandlers } = require('./handlers/appsHandlers');
-const { registerAuthHandlers } = require('./handlers/authHandlers'); // <-- novo
+const { registerAuthHandlers } = require('./handlers/authHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -35,13 +35,8 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
+  // Registra handlers que precisam da referência direta da janela
   registerSystemHandlers(mainWindow);
-  registerTweaksHandlers();
-  registerCleanupHandlers();
-  registerSettingsHandlers();
-  registerRestoreHandlers();
-  registerAppsHandlers();
-  registerAuthHandlers(); // <-- novo
 
   mainWindow.on('closed', () => {
     stopStatsStreaming();
@@ -50,7 +45,16 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Registra todos os handlers do IPC uma única vez ao iniciar o aplicativo
+  registerTweaksHandlers();
+  registerCleanupHandlers();
+  registerSettingsHandlers();
+  registerRestoreHandlers();
+  registerAppsHandlers();
+  registerAuthHandlers();
+
   createWindow();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();

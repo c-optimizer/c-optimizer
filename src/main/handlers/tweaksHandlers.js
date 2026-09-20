@@ -1,7 +1,7 @@
 const { ipcMain } = require('electron');
 const os = require('os');
 const store = require('../store');
-const { runShellCommand, runCommandSmart, isRunningAsAdmin } = require('../utils/shell');
+const { runPowerShellScript, runElevatedCommand, isRunningAsAdmin } = require('../utils/shell');
 
 /**
  * Catálogo de tweaks. Cada tweak tem:
@@ -238,6 +238,4 @@ function registerTweaksHandlers() {
   });
 }
 
-module.exports = {
-  registerTweaksHandlers
-};
+module.exports = { registerTweaksHandlers };

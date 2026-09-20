@@ -1,5 +1,6 @@
 const { ipcMain } = require('electron');
 const si = require('systeminformation');
+const { isRunningAsAdmin } = require('../utils/shell');
 
 const STATS_INTERVAL_MS = 2000;
 let statsIntervalHandle = null;
@@ -115,6 +116,16 @@ async function collectStaticInfo() {
  * @param {import('electron').BrowserWindow} mainWindow - janela principal, usada para enviar updates via webContents.send
  */
 function registerSystemHandlers(mainWindow) {
+  // Handler para verificar se o app possui privilégios de Administrador
+  ipcMain.handle('system:is-admin', async () => {
+    try {
+      return isRunningAsAdmin();
+    } catch (error) {
+      console.error('[system:is-admin] Erro ao verificar privilégios:', error);
+      return false;
+    }
+  });
+
   // Snapshot único sob demanda (ex: refresh manual, ou primeira carga da Dashboard)
   ipcMain.handle('system:get-stats', async () => {
     try {
@@ -135,8 +146,7 @@ function registerSystemHandlers(mainWindow) {
     }
   });
 
-  // Placeholder de status de otimização — será conectado de verdade
-  // quando os tweaks (Etapa 2) e a persistência (Etapa 3) existirem.
+  // Placeholder de status de otimização
   ipcMain.handle('system:get-optimization-status', async () => {
     return {
       score: 76,
