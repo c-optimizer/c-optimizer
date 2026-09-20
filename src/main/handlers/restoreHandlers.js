@@ -3,69 +3,104 @@ const os = require('os');
 const { runShellCommand, runCommandSmart } = require('../utils/shell');
 
 /**
- * Verifica se a Proteção do Sistema está ativa no C:
+ * Converte a string de data do WMI (ex: "20260918064831.954121-000") para ISO string válida
  */
-async function checkSystemRestoreStatus() {
-  if (os.platform() !== 'win32') {
-    return { enabled: false, message: 'Disponível apenas no Windows.' };
+function parseWmiDate(wmiDateStr) {
+  if (!wmiDateStr || typeof wmiDateStr !== 'string') return new Date().toISOString();
+
+  // Tenta converter se for formato WMI (AAAAMMDDHHMMSS...)
+  if (wmiDateStr.length >= 14 && !wmiDateStr.includes('-') && !wmiDateStr.includes('/')) {
+    const year = wmiDateStr.substring(0, 4);
+    const month = wmiDateStr.substring(4, 6);
+    const day = wmiDateStr.substring(6, 8);
+    const hour = wmiDateStr.substring(8, 10);
+    const min = wmiDateStr.substring(10, 12);
+    const sec = wmiDateStr.substring(12, 14);
+
+    const date = new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}`);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
   }
 
-  // Consulta o estado do SystemRestore no C:
-  const script = `
-    $sr = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
-    $service = Get-Service -Name "srservice" -ErrorAction SilentlyContinue
-    if ($service -and $service.Status -eq "Running") { "ENABLED" } else { "ENABLED" }
-  `;
+  // Fallback para datas padrão
+  const parsedDate = new Date(wmiDateStr);
+  if (!isNaN(parsedDate.getTime())) {
+    return parsedDate.toISOString();
+  }
 
-  try {
-    // Tenta primeiro via shell simples
-    const { stdout } = await runShellCommand(script, 10000);
-    return {
-      enabled: true,
-      message: 'Proteção do Sistema ativa.'
-    };
-  } catch (error) {
-    return {
-      enabled: true,
-      message: 'Proteção do Sistema ativa.'
-    };
+  return new Date().toISOString();
+}
+
+/**
+ * Mapeia os tipos numéricos de RestorePointType para a interface
+ */
+function mapPointType(typeNum) {
+  switch (Number(typeNum)) {
+    case 0:
+    case 10:
+    case 12:
+      return 'Ponto Manual';
+    case 1:
+      return 'Instalação de Aplicativo';
+    case 2:
+      return 'Remoção de Aplicativo';
+    case 18:
+      return 'Atualização do Windows';
+    default:
+      return 'Automático';
   }
 }
 
 /**
- * Lista todos os pontos de restauração do sistema (usando elevação para ter permissão de leitura)
+ * Lista todos os pontos de restauração do sistema
  */
 async function listRestorePoints() {
-  if (os.platform() !== 'win32') return [];
+  if (os.platform() !== 'win32') {
+    return { success: false, points: [], error: 'Pontos de restauração disponíveis apenas no Windows.' };
+  }
 
   const script = `Get-ComputerRestorePoint | Select-Object SequenceNumber, Description, CreationTime, RestorePointType | ConvertTo-Json -Compress`;
 
   try {
-    // Usa o runCommandSmart com exigeAdmin=true ou tenta runShellCommand
     const { stdout } = await runShellCommand(script, 20000);
     const trimmed = (stdout || '').trim();
 
-    if (!trimmed) return [];
+    if (!trimmed) {
+      return { success: true, points: [] };
+    }
 
     const parsed = JSON.parse(trimmed);
-    const points = Array.isArray(parsed) ? parsed : [parsed];
+    const rawPoints = Array.isArray(parsed) ? parsed : [parsed];
 
-    return points.map((pt) => ({
-      id: pt.SequenceNumber,
-      description: pt.Description || 'Ponto de Restauração Sem Nome',
-      date: pt.CreationTime,
-      type: pt.RestorePointType
+    const formattedPoints = rawPoints.map((pt) => ({
+      id: pt.SequenceNumber || Math.random(),
+      description: pt.Description || 'Ponto de Restauração',
+      date: parseWmiDate(pt.CreationTime),
+      type: mapPointType(pt.RestorePointType)
     }));
+
+    // Ordena do mais recente para o mais antigo
+    formattedPoints.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    return {
+      success: true,
+      points: formattedPoints
+    };
   } catch (error) {
-    console.error('[restore:list-points] Erro ao listar pontos:', error.message);
-    return [];
+    console.error('[restore:list-points] Erro:', error.message);
+    return {
+      success: false,
+      points: [],
+      error: 'Não foi possível carregar os pontos de restauração.'
+    };
   }
 }
 
 /**
  * Cria um novo ponto de restauração
  */
-async function createRestorePoint(description = 'C-Optimizer Auto Backup') {
+async function createRestorePoint(description = 'Backup de Segurança - C-Optimizer') {
   if (os.platform() !== 'win32') {
     return { success: false, error: 'Disponível apenas no Windows.' };
   }
@@ -88,7 +123,7 @@ async function createRestorePoint(description = 'C-Optimizer Auto Backup') {
 }
 
 /**
- * Ativa a Proteção do Sistema no C:
+ * Ativa a Proteção do Sistema na unidade C:
  */
 async function enableSystemRestore() {
   if (os.platform() !== 'win32') {
@@ -101,21 +136,13 @@ async function enableSystemRestore() {
     await runCommandSmart(script, true, 30000);
     return { success: true };
   } catch (error) {
-    console.error('[restore:enable] Erro:', error.message);
+    console.error('[restore:enable-protection] Erro:', error.message);
     return { success: false, error: 'Falha ao ativar a Proteção do Sistema.' };
   }
 }
 
 function registerRestoreHandlers() {
-  ipcMain.handle('restore:get-status', async () => {
-    return await checkSystemRestoreStatus();
-  });
-
   ipcMain.handle('restore:list-points', async () => {
-    return await listRestorePoints();
-  });
-
-  ipcMain.handle('restore:list', async () => {
     return await listRestorePoints();
   });
 
@@ -123,11 +150,7 @@ function registerRestoreHandlers() {
     return await createRestorePoint(description);
   });
 
-  ipcMain.handle('restore:create', async (_event, description) => {
-    return await createRestorePoint(description);
-  });
-
-  ipcMain.handle('restore:enable', async () => {
+  ipcMain.handle('restore:enable-protection', async () => {
     return await enableSystemRestore();
   });
 }
