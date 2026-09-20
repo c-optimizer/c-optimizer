@@ -25,6 +25,8 @@ const validInvokeChannels = [
   // Restauração — apenas criação e listagem (não há exclusão/aplicação)
   'restore:list-points',
   'restore:create-point',
+  'restore:check-status',
+  'restore:enable-protection',
 
   // Apps / Bloatware — remoção em lote via toggles
   'apps:list-installed',

@@ -1,76 +1,83 @@
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const os = require('os');
-const util = require('util');
 
-const execAsync = util.promisify(exec);
+/**
+ * Executa um script PowerShell criando um arquivo temporário .ps1
+ * para evitar falsos-positivos de antivirus com -EncodedCommand.
+ */
+function runPowerShellScript(scriptContent, options = {}) {
+  return new Promise((resolve, reject) => {
+    // Cria um nome de arquivo temporário único
+    const tempFileName = `c_opt_${Date.now()}_${Math.random().toString(36).substring(7)}.ps1`;
+    const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
-function encodePowerShellCommand(command) {
-  return Buffer.from(command, 'utf16le').toString('base64');
+    try {
+      // Escreve o script no arquivo .ps1 com codificação UTF8
+      fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
+
+      const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempFilePath}"`;
+
+      exec(command, options, (error, stdout, stderr) => {
+        // Garante a remoção do arquivo temporário após execução
+        fs.unlink(tempFilePath, () => {});
+
+        if (error) {
+          return reject(error);
+        }
+        resolve(stdout ? stdout.trim() : '');
+      });
+    } catch (err) {
+      fs.unlink(tempFilePath, () => {});
+      reject(err);
+    }
+  });
 }
 
 /**
- * Verifica se o processo atual já está rodando com privilégios de administrador.
+ * Executa comando elevado via UAC criando também um script temporário
  */
-async function isRunningAsAdmin() {
-  if (os.platform() !== 'win32') return true;
-  try {
-    await execAsync('net session', { windowsHide: true, timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
+function runElevatedCommand(scriptContent) {
+  return new Promise((resolve, reject) => {
+    const tempFileName = `c_opt_elev_${Date.now()}_${Math.random().toString(36).substring(7)}.ps1`;
+    const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
-/**
- * Executa um comando no contexto de privilégio ATUAL do processo (sem elevar).
- */
-async function runShellCommand(command, timeout = 15000) {
-  const platform = os.platform();
+    try {
+      fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
 
-  if (platform === 'win32') {
-    const encoded = encodePowerShellCommand(command);
-    const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
-    // maxBuffer maior: listagens (Get-AppxPackage, Get-ComputerRestorePoint) podem gerar JSON grande
-    return execAsync(psCommand, { windowsHide: true, timeout, maxBuffer: 1024 * 1024 * 10 });
-  }
+      // Executa o script temporário via RunAs (UAC)
+      const psArgs = [
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-Command',
+        `Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${tempFilePath}"' -Verb RunAs -Wait`
+      ];
 
-  return execAsync(command, { shell: '/bin/bash', timeout });
-}
+      const child = spawn('powershell.exe', psArgs, { windowsHide: true });
 
-/**
- * Executa um comando elevado via UAC nativo do Windows (Start-Process -Verb RunAs),
- * sem exigir que o app inteiro rode como Administrador.
- */
-async function runElevatedCommand(command, timeout = 30000) {
-  const innerEncoded = encodePowerShellCommand(command);
-  const elevateScript = `Start-Process powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','${innerEncoded}') -Verb RunAs -Wait -WindowStyle Hidden`;
-  const outerEncoded = encodePowerShellCommand(elevateScript);
-  const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${outerEncoded}`;
+      child.on('close', (code) => {
+        fs.unlink(tempFilePath, () => {});
+        if (code === 0) {
+          resolve({ success: true });
+        } else {
+          // Trata código de erro 1223 (Cancelado pelo usuário no UAC)
+          reject(new Error(`O comando elevado falhou ou foi cancelado (Código: ${code})`));
+        }
+      });
 
-  return execAsync(psCommand, { windowsHide: true, timeout });
-}
-
-/**
- * Escolhe automaticamente entre execução normal ou elevada, dependendo
- * de o comando exigir admin e o processo já estar (ou não) elevado.
- */
-async function runCommandSmart(command, requiresAdmin, timeout) {
-  const platform = os.platform();
-  if (platform !== 'win32') {
-    return runShellCommand(command, timeout);
-  }
-
-  const alreadyAdmin = await isRunningAsAdmin();
-  if (requiresAdmin && !alreadyAdmin) {
-    return runElevatedCommand(command, timeout);
-  }
-  return runShellCommand(command, timeout);
+      child.on('error', (err) => {
+        fs.unlink(tempFilePath, () => {});
+        reject(err);
+      });
+    } catch (err) {
+      fs.unlink(tempFilePath, () => {});
+      reject(err);
+    }
+  });
 }
 
 module.exports = {
-  encodePowerShellCommand,
-  isRunningAsAdmin,
-  runShellCommand,
-  runElevatedCommand,
-  runCommandSmart
+  runPowerShellScript,
+  runElevatedCommand
 };
