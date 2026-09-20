@@ -12,6 +12,18 @@ function Header({ title, subtitle, statusOk = true }) {
   const { language, setLanguage, t } = useLanguage();
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
+  // Agora persiste no electron-store, igual à SettingsView — evita o
+  // bug de o idioma "voltar" ao reabrir o app quando trocado por aqui.
+  const handleLanguageSelect = async (code) => {
+    setLanguage(code);
+    setDropdownOpen(false);
+    try {
+      await window.electronAPI.invoke('settings:set-language', code);
+    } catch (error) {
+      console.error('Erro ao salvar idioma:', error);
+    }
+  };
+
   return (
     <header className="flex items-center justify-between px-8 py-5 border-b border-c-border bg-c-bg sticky top-0 z-10">
       <div>
@@ -46,10 +58,7 @@ function Header({ title, subtitle, statusOk = true }) {
               {languageOptions.map((opt) => (
                 <button
                   key={opt.code}
-                  onClick={() => {
-                    setLanguage(opt.code);
-                    setDropdownOpen(false);
-                  }}
+                  onClick={() => handleLanguageSelect(opt.code)}
                   className={`w-full text-left px-3 py-2 text-sm hover:bg-c-bg transition-colors
                     ${language === opt.code ? 'text-c-primary' : 'text-slate-300'}
                   `}
