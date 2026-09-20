@@ -2,43 +2,63 @@ const { ipcMain } = require('electron');
 const { runPowerShellScript, runElevatedCommand } = require('../utils/shell');
 
 function setupRestoreHandlers() {
-  // Checa o status do serviço de restauração no disco C:
-  ipcMain.handle('restore:check-status', async () => {
-    try {
-      const script = `
-        $status = Get-WmiObject -Namespace root\\default -Class SystemRestoreConfig | Where-Object { $_.scriptingEnabled -ne $null }
-        $driveC = Get-ComputerRestorePoint -ErrorAction SilentlyContinue
-        $protection = (Get-WmiObject -Namespace root\\default -Class SystemRestore).Disable
-        if ($protection -eq 0 -or $protection -eq $null) {
-          Write-Output "ENABLED"
-        } else {
-          Write-Output "DISABLED"
-        }
-      `;
-      const output = await runPowerShellScript(script);
-      return { isEnabled: output.includes("ENABLED") };
-    } catch (error) {
-      return { isEnabled: false, error: error.message };
-    }
-  });
-
-  // Lista os pontos de restauração
+  // 1. Checa status e lista os pontos
   ipcMain.handle('restore:list-points', async () => {
     try {
+      // Script resiliente para listar os pontos convertidos para ISO Date
       const script = `
-        Get-ComputerRestorePoint | Select-Object SequenceNumber, Description, RestorePointType, CreationTime | ConvertTo-Json
+        try {
+          $points = Get-ComputerRestorePoint -ErrorAction Stop
+          $result = @()
+          foreach ($p in $points) {
+            $typeStr = switch ($p.RestorePointType) {
+              0 { "Ponto Manual" }
+              10 { "Instalação de Aplicativo" }
+              11 { "Remoção de Aplicativo" }
+              12 { "Atualização do Windows" }
+              13 { "Restauração Anterior" }
+              default { "Automático" }
+            }
+            # Converte formato de data do WMI (WMI Date / ManagementDateTime)
+            $dt = [System.Management.ManagementDateTimeConverter]::ToDateTime($p.CreationTime)
+            $result += @{
+              id = $p.SequenceNumber
+              description = $p.Description
+              type = $typeStr
+              date = $dt.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            }
+          }
+          $result | ConvertTo-Json -Compress
+        } catch {
+          Write-Output "ERROR: $($_.Exception.Message)"
+        }
       `;
+
       const output = await runPowerShellScript(script);
-      if (!output) return [];
-      
-      const parsed = JSON.parse(output);
-      return Array.isArray(parsed) ? parsed : [parsed];
+
+      if (!output || output.startsWith("ERROR:")) {
+        return {
+          success: false,
+          error: output ? output.replace("ERROR: ", "") : "Não foi possível listar os pontos de restauração. A Proteção do Sistema pode estar desativada."
+        };
+      }
+
+      let parsed = JSON.parse(output);
+      if (!Array.isArray(parsed)) parsed = [parsed];
+
+      return {
+        success: true,
+        points: parsed
+      };
     } catch (error) {
-      return [];
+      return {
+        success: false,
+        error: error.message || "Erro ao consultar pontos de restauração."
+      };
     }
   });
 
-  // Habilita a Proteção do Sistema no disco C: via PowerShell elevado
+  // 2. Habilita a Proteção do Sistema no Disco C:
   ipcMain.handle('restore:enable-protection', async () => {
     try {
       const script = `Enable-ComputerRestore -Drive "C:\\"`;
@@ -49,10 +69,10 @@ function setupRestoreHandlers() {
     }
   });
 
-  // Cria um Ponto de Restauração elevado
+  // 3. Cria Ponto de Restauração Elevado
   ipcMain.handle('restore:create-point', async (_, description) => {
     try {
-      const desc = description || "C-Optimizer Auto Backup";
+      const desc = description || "Backup de Segurança - C-Optimizer";
       const script = `Checkpoint-Computer -Description "${desc}" -RestorePointType "MODIFY_SETTINGS"`;
       await runElevatedCommand(script);
       return { success: true };

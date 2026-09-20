@@ -10,7 +10,8 @@ import {
   PackageCheck,
   RefreshCw,
   Wrench,
-  Sparkles
+  Sparkles,
+  Power
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -29,7 +30,6 @@ function formatRelative(isoString) {
   return `Há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
 }
 
-// Ícone e cor por tipo de ponto de restauração, para dar contexto visual rápido
 const TYPE_STYLE = {
   'Ponto Manual': { icon: Wrench, color: 'text-c-secondary', bg: 'bg-c-secondary/10', ring: 'border-c-secondary/30' },
   'Instalação de Aplicativo': { icon: PackageCheck, color: 'text-c-primary', bg: 'bg-c-primary/10', ring: 'border-c-primary/30' },
@@ -43,7 +43,6 @@ function getTypeStyle(type) {
   return TYPE_STYLE[type] || TYPE_STYLE['Automático'];
 }
 
-// Skeleton animado para o estado de carregamento da lista
 function PointSkeleton() {
   return (
     <div className="flex items-center gap-3 bg-c-surface border border-c-border rounded-xl px-5 py-4 animate-pulse">
@@ -61,6 +60,7 @@ function RestoreView() {
   const [points, setPoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [protectionAvailable, setProtectionAvailable] = useState(true);
@@ -88,6 +88,25 @@ function RestoreView() {
     loadPoints();
   }, []);
 
+  const handleEnableProtection = async () => {
+    setEnabling(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const result = await window.electronAPI.invoke('restore:enable-protection');
+      if (result.success) {
+        setSuccessMsg('Proteção do sistema ativada com sucesso!');
+        await loadPoints();
+      } else {
+        setErrorMsg(result.error || 'Não foi possível ativar a Proteção do Sistema.');
+      }
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setEnabling(false);
+    }
+  };
+
   const handleCreate = async () => {
     setCreating(true);
     setErrorMsg(null);
@@ -111,7 +130,7 @@ function RestoreView() {
 
   return (
     <div className="p-8 flex flex-col gap-6">
-      {/* Cards de resumo, no mesmo padrão visual da Dashboard */}
+      {/* Cards de resumo */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-c-surface border border-c-secondary/30 rounded-xl p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -173,7 +192,7 @@ function RestoreView() {
 
         <button
           onClick={handleCreate}
-          disabled={creating}
+          disabled={creating || !protectionAvailable}
           className="relative mt-2 flex items-center gap-2 px-6 py-3 rounded-lg bg-c-secondary/10 border border-c-secondary text-c-secondary text-sm font-semibold shadow-glow-secondary hover:bg-c-secondary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {creating ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
@@ -189,9 +208,21 @@ function RestoreView() {
       )}
 
       {errorMsg && (
-        <div className="flex items-center gap-2 text-c-danger text-sm bg-c-danger/10 border border-c-danger/30 rounded-lg px-4 py-3">
-          <AlertCircle size={16} />
-          {errorMsg}
+        <div className="flex items-center justify-between gap-2 text-c-danger text-sm bg-c-danger/10 border border-c-danger/30 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          {!protectionAvailable && (
+            <button
+              onClick={handleEnableProtection}
+              disabled={enabling}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-c-danger/20 border border-c-danger/40 text-c-danger hover:bg-c-danger/30 text-xs font-semibold transition-all shrink-0 disabled:opacity-50"
+            >
+              {enabling ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />}
+              {enabling ? 'Ativando...' : 'Ativar Proteção'}
+            </button>
+          )}
         </div>
       )}
 
