@@ -7,7 +7,6 @@ const validInvokeChannels = [
   'system:get-stats',
   'system:get-info',
   'system:get-optimization-status',
-  'system:run-quick-optimize',
   'system:is-admin',
 
   // Otimizações
@@ -22,13 +21,13 @@ const validInvokeChannels = [
   'cleanup:execute',
   'cleanup:get-last-run',
 
-  // Restauração — apenas criação e listagem (não há exclusão/aplicação)
+  // Restauração
   'restore:list-points',
+  'restore:list-points-elevated',
   'restore:create-point',
-  'restore:check-status',
   'restore:enable-protection',
 
-  // Apps / Bloatware — remoção em lote via toggles
+  // Apps / Bloatware
   'apps:list-installed',
   'apps:uninstall-batch',
 

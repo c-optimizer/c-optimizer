@@ -61,6 +61,7 @@ function RestoreView() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [enabling, setEnabling] = useState(false);
+  const [retryingElevated, setRetryingElevated] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [protectionAvailable, setProtectionAvailable] = useState(true);
@@ -123,6 +124,30 @@ function RestoreView() {
       setErrorMsg(error.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  // Fallback: em alguns ambientes Windows, a consulta de pontos de restauração
+  // só retorna resultados com token elevado, mesmo sem lançar erro (vem vazia).
+  // Este botão pede UAC uma única vez para tentar de novo com privilégio.
+  const handleRetryElevated = async () => {
+    setRetryingElevated(true);
+    setErrorMsg(null);
+    try {
+      const result = await window.electronAPI.invoke('restore:list-points-elevated');
+      if (result.success) {
+        setPoints(result.points);
+        setProtectionAvailable(true);
+        if (result.points.length === 0) {
+          setErrorMsg('Nenhum ponto de restauração encontrado, mesmo com permissão de administrador.');
+        }
+      } else {
+        setErrorMsg(result.error);
+      }
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setRetryingElevated(false);
     }
   };
 
@@ -251,6 +276,14 @@ function RestoreView() {
             </div>
             <p className="text-slate-500 text-sm">Nenhum ponto de restauração encontrado ainda.</p>
             <p className="text-slate-600 text-xs">Crie o primeiro backup usando o botão acima.</p>
+            <button
+              onClick={handleRetryElevated}
+              disabled={retryingElevated}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-c-secondary/40 text-c-secondary text-xs font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
+            >
+              {retryingElevated ? <Loader2 size={13} className="animate-spin" /> : <Shield size={13} />}
+              {retryingElevated ? 'Verificando...' : 'Verificar com permissão de administrador'}
+            </button>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5">

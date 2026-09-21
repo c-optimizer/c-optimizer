@@ -11,6 +11,7 @@ function AppsView() {
   const [loading, setLoading] = useState(true);
   const [removing, setRemoving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [failedDetails, setFailedDetails] = useState([]);
   const [successMsg, setSuccessMsg] = useState(null);
 
   const loadApps = async () => {
@@ -54,6 +55,7 @@ function AppsView() {
     setRemoving(true);
     setErrorMsg(null);
     setSuccessMsg(null);
+    setFailedDetails([]);
 
     try {
       const result = await window.electronAPI.invoke('apps:uninstall-batch', selectedIds);
@@ -65,13 +67,24 @@ function AppsView() {
       }
 
       if (!result.success) {
-        const failedCount = result.failed?.length || 0;
+        const failed = result.failed || [];
         setErrorMsg(
           result.error ||
-          (failedCount > 0
-            ? `${failedCount} aplicativo(s) não puderam ser removidos.`
+          (failed.length > 0
+            ? `${failed.length} aplicativo(s) não puderam ser removidos.`
             : 'Falha ao remover os aplicativos selecionados.')
         );
+
+        // Mapeia o id (PackageFullName) de volta para o nome amigável do app,
+        // para mostrar qual app falhou e o motivo real retornado pelo Windows.
+        const detailed = failed.map((f) => {
+          const appInfo = apps.find((a) => a.id === f.id);
+          return {
+            name: appInfo?.name || f.id,
+            error: f.error || 'Motivo não informado pelo Windows.'
+          };
+        });
+        setFailedDetails(detailed);
       }
     } catch (error) {
       setErrorMsg(error.message);
@@ -101,9 +114,20 @@ function AppsView() {
       )}
 
       {errorMsg && (
-        <div className="flex items-center gap-2 text-c-danger text-sm bg-c-danger/10 border border-c-danger/30 rounded-lg px-4 py-3">
-          <AlertCircle size={16} />
-          {errorMsg}
+        <div className="flex flex-col gap-2 text-c-danger text-sm bg-c-danger/10 border border-c-danger/30 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} />
+            {errorMsg}
+          </div>
+          {failedDetails.length > 0 && (
+            <ul className="flex flex-col gap-1 pl-6 text-xs text-c-danger/90 list-disc">
+              {failedDetails.map((detail, idx) => (
+                <li key={idx}>
+                  <span className="font-semibold">{detail.name}:</span> {detail.error}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

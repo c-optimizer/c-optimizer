@@ -13,11 +13,11 @@ function runPowerShellScript(scriptContent, options = {}) {
     const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
     try {
-      fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
+      fs.writeFileSync(tempFilePath, '\uFEFF' + scriptContent, 'utf8');
 
       const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempFilePath}"`;
 
-      exec(command, options, (error, stdout, stderr) => {
+      exec(command, {...options, encoding: 'utf8' }, (error, stdout, stderr) => {
         fs.unlink(tempFilePath, () => {});
 
         if (error) {
@@ -40,7 +40,14 @@ function runShellCommand(scriptContent, timeoutMs = 20000) {
 }
 
 /**
- * Executa comando elevado via UAC criando também um script temporário
+ * Executa comando elevado via UAC criando também um script temporário.
+ *
+ * IMPORTANTE: propositalmente NÃO usamos -WindowStyle Hidden aqui.
+ * Um processo elevado, sem assinatura digital, com janela oculta e que
+ * modifica o registro do Windows é um padrão comportamental clássico de
+ * heurísticas de antivírus (gerou falso positivo "Trojan:Win32/Commando.A!ml"
+ * em testes reais). A janela do PowerShell aparecer brevemente é só estética;
+ * escondê-la aumenta a chance de o app inteiro ser sinalizado como malware.
  */
 function runElevatedCommand(scriptContent) {
   return new Promise((resolve, reject) => {
@@ -48,7 +55,7 @@ function runElevatedCommand(scriptContent) {
     const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
     try {
-      fs.writeFileSync(tempFilePath, scriptContent, 'utf8');
+      fs.writeFileSync(tempFilePath, '\uFEFF' + scriptContent, 'utf8');
 
       const psArgs = [
         '-NoProfile',
@@ -104,10 +111,80 @@ function isRunningAsAdmin() {
   }
 }
 
+/**
+ * Executa um script elevado (um único UAC) e retorna o resultado que o
+ * próprio script grava em arquivo — necessário porque Start-Process -Verb RunAs
+ * não devolve stdout ao processo pai.
+ *
+ * Mesma observação do runElevatedCommand: sem -WindowStyle Hidden, de propósito.
+ */
+function runElevatedScriptWithOutput(scriptBody, timeoutMs = 40000) {
+  return new Promise((resolve, reject) => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const scriptPath = path.join(os.tmpdir(), `c_opt_out_${id}.ps1`);
+    const outputPath = path.join(os.tmpdir(), `c_opt_out_${id}_result.json`);
+
+    const fullScript = `
+$ErrorActionPreference = 'Continue'
+${scriptBody}
+$__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
+`.trim();
+
+    function cleanup() {
+      fs.unlink(scriptPath, () => {});
+      fs.unlink(outputPath, () => {});
+    }
+
+    try {
+      fs.writeFileSync(tempFilePath, '\uFEFF' + scriptContent, 'utf8');
+    } catch (err) {
+      return reject(err);
+    }
+
+    const psArgs = [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-Command',
+      `Start-Process powershell.exe -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -Wait`
+    ];
+
+    const child = spawn('powershell.exe', psArgs, { windowsHide: true });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      cleanup();
+      reject(new Error('Tempo limite excedido ao aguardar a permissão de administrador.'));
+    }, timeoutMs);
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        cleanup();
+        return reject(new Error(`O comando elevado falhou ou foi cancelado (Código: ${code})`));
+      }
+      try {
+        const raw = fs.readFileSync(outputPath, 'utf8');
+        cleanup();
+        resolve(JSON.parse(raw.trim()));
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      cleanup();
+      reject(err);
+    });
+  });
+}
+
 module.exports = {
   runPowerShellScript,
   runShellCommand,
   runElevatedCommand,
+  runElevatedScriptWithOutput,
   runCommandSmart,
   isRunningAsAdmin
 };

@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
@@ -12,6 +12,22 @@ const { registerAuthHandlers } = require('./handlers/authHandlers');
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow = null;
+
+// Rede de segurança: captura qualquer erro não tratado no Main Process
+// para evitar que o app trave silenciosamente sem explicação ao usuário.
+process.on('uncaughtException', (error) => {
+  console.error('[uncaughtException]', error);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    dialog.showErrorBox(
+      'C-Optimizer encontrou um erro inesperado',
+      `Um problema interno ocorreu:\n\n${error.message}\n\nSe o app continuar instável, reinicie-o.`
+    );
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -41,7 +57,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // REGISTRA TODOS OS HANDLERS ANTES DE CARREGAR A INTERFACE
   registerSystemHandlers();
   registerTweaksHandlers();
   registerCleanupHandlers();
