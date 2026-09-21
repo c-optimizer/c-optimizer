@@ -1,5 +1,6 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
@@ -9,12 +10,43 @@ const { registerRestoreHandlers } = require('./handlers/restoreHandlers');
 const { registerAppsHandlers } = require('./handlers/appsHandlers');
 const { registerAuthHandlers } = require('./handlers/authHandlers');
 
+// Configuração de logs do Auto-Updater
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'info';
+autoUpdater.autoDownload = false;
+
+function setupAutoUpdater(window) {
+  if (!window) return;
+
+  // Procura por atualizações ao iniciar o app
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on('update-available', (info) => {
+    window.webContents.send('update:available', info);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    window.webContents.send('update:progress', progressObj);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    window.webContents.send('update:downloaded', info);
+  });
+
+  ipcMain.handle('update:start-download', () => {
+    autoUpdater.downloadUpdate();
+  });
+
+  ipcMain.handle('update:quit-and-install', () => {
+    autoUpdater.quitAndInstall();
+  });
+}
+
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow = null;
 
 // Rede de segurança: captura qualquer erro não tratado no Main Process
-// para evitar que o app trave silenciosamente sem explicação ao usuário.
 process.on('uncaughtException', (error) => {
   console.error('[uncaughtException]', error);
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -67,9 +99,17 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // Inicializa o auto-updater apenas em produção (app empacotado)
+  if (!isDev) {
+    setupAutoUpdater(mainWindow);
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      if (!isDev) {
+        setupAutoUpdater(mainWindow);
+      }
     }
   });
 });

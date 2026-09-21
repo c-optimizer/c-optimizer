@@ -40,13 +40,20 @@ const validInvokeChannels = [
   // Autenticação
   'auth:validate-license',
   'auth:get-stored-license',
-  'auth:logout'
+  'auth:logout',
+
+  // Atualização
+  'update:start-download',
+  'update:quit-and-install'
 ];
 
 const validOnChannels = [
   'system:stats-update',
   'cleanup:progress',
-  'tweaks:progress'
+  'tweaks:progress',
+  'update:available',
+  'update:progress',
+  'update:downloaded'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

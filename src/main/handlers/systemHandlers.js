@@ -93,7 +93,7 @@ async function collectStaticInfo() {
 }
 
 function registerSystemHandlers() {
-  console.log('>>> REGISTRANDO SYSTEM HANDLERS DO IPC <<<');
+  console.log('');
 
   ipcMain.handle('system:is-admin', async () => {
     try {
