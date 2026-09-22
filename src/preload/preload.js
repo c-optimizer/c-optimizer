@@ -8,12 +8,14 @@ const validInvokeChannels = [
   'system:is-admin',
   'system:get-memory-profile',
   'system:open-external',
+  'system:copy-logs',
 
   // Otimizações
   'tweaks:get-catalog',
   'tweaks:apply',
   'tweaks:revert',
   'tweaks:get-applied-state',
+  'tweaks:revert-all',
 
   // Disco
   'disk:list-volumes',

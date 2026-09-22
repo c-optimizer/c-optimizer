@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
+const { log } = require('./utils/logger');
 
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
@@ -19,7 +20,7 @@ let mainWindow = null;
 // ------------------------------------------------------------------
 // Auto-updater (electron-updater + GitHub Releases)
 // ------------------------------------------------------------------
-autoUpdater.logger = console;
+autoUpdater.logger = log;
 autoUpdater.autoDownload = false;
 
 ipcMain.handle('update:start-download', () => autoUpdater.downloadUpdate());
@@ -29,10 +30,11 @@ function setupAutoUpdater(window) {
   if (!window) return;
 
   autoUpdater.checkForUpdates().catch((err) => {
-    console.error('[autoUpdater] Falha ao checar atualizações:', err.message);
+    log.error('[autoUpdater] Falha ao checar atualizações:', err.message);
   });
 
   autoUpdater.on('update-available', (info) => {
+    log.info('[autoUpdater] Atualização disponível:', info.version);
     window.webContents.send('update:available', info);
   });
 
@@ -41,6 +43,7 @@ function setupAutoUpdater(window) {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    log.info('[autoUpdater] Atualização baixada:', info.version);
     window.webContents.send('update:downloaded', info);
   });
 }
@@ -49,7 +52,7 @@ function setupAutoUpdater(window) {
 // Tratamento global de erros — evita crash silencioso do Main Process
 // ------------------------------------------------------------------
 process.on('uncaughtException', (error) => {
-  console.error('[uncaughtException]', error);
+  log.error('[uncaughtException]', error);
   if (mainWindow && !mainWindow.isDestroyed()) {
     dialog.showErrorBox(
       'C-Optimizer encontrou um erro inesperado',
@@ -59,13 +62,15 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason);
+  log.error('[unhandledRejection]', reason);
 });
 
 // ------------------------------------------------------------------
 // Janela principal
 // ------------------------------------------------------------------
 function createWindow() {
+  log.info(`Iniciando C-Optimizer (isDev=${isDev}, platform=${process.platform})`);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -88,6 +93,7 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => {
+    log.info('Janela principal fechada.');
     mainWindow = null;
   });
 }
@@ -120,6 +126,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  log.info('Encerrando C-Optimizer.');
   stopStatsStreaming();
   if (process.platform !== 'darwin') {
     app.quit();

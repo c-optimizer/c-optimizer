@@ -1,7 +1,9 @@
-const { ipcMain, BrowserWindow, shell } = require('electron');
+const { ipcMain, BrowserWindow, shell, clipboard } = require('electron');
 const si = require('systeminformation');
+const fs = require('fs');
 const { isRunningAsAdmin, runShellCommand } = require('../utils/shell');
 const { computeOptimizationScore } = require('./tweaksHandlers');
+const { log, getLogFilePath } = require('../utils/logger');
 const os = require('os');
 
 const STATS_INTERVAL_MS = 2000;
@@ -82,31 +84,29 @@ $board = Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product
 
 function registerSystemHandlers() {
   ipcMain.handle('system:is-admin', async () => {
-    try { return isRunningAsAdmin(); } catch (e) { console.error(e); return false; }
+    try { return isRunningAsAdmin(); } catch (e) { log.error('[system:is-admin]', e); return false; }
   });
 
   ipcMain.handle('system:get-stats', async () => {
-    try { return await collectStats(); } catch (e) { console.error(e); return { error: e.message }; }
+    try { return await collectStats(); } catch (e) { log.error('[system:get-stats]', e); return { error: e.message }; }
   });
 
   ipcMain.handle('system:get-info', async () => {
-    try { return await collectStaticInfo(); } catch (e) { console.error(e); return { error: e.message }; }
+    try { return await collectStaticInfo(); } catch (e) { log.error('[system:get-info]', e); return { error: e.message }; }
   });
 
-  // Score REAL: proporção de tweaks ativos em relação ao catálogo total,
-  // calculado em tweaksHandlers.js a partir do estado persistido.
   ipcMain.handle('system:get-optimization-status', async () => {
     try {
       const { score, activeCount, total } = computeOptimizationScore();
       return { score, activeCount, total, lastCheck: new Date().toISOString() };
     } catch (error) {
-      console.error('[system:get-optimization-status] Erro:', error);
+      log.error('[system:get-optimization-status]', error);
       return { score: 0, activeCount: 0, total: 0, lastCheck: new Date().toISOString(), error: error.message };
     }
   });
 
   ipcMain.handle('system:get-memory-profile', async () => {
-    try { return await getMemoryProfile(); } catch (e) { console.error(e); return { supported: false, error: e.message }; }
+    try { return await getMemoryProfile(); } catch (e) { log.error('[system:get-memory-profile]', e); return { supported: false, error: e.message }; }
   });
 
   ipcMain.handle('system:open-external', async (_event, url) => {
@@ -122,6 +122,28 @@ function registerSystemHandlers() {
     }
   });
 
+  // Lê o arquivo de log atual e copia para a área de transferência do
+  // Windows — permite que o usuário mande os logs para suporte sem
+  // precisar navegar manualmente até a pasta AppData.
+  ipcMain.handle('system:copy-logs', async () => {
+    try {
+      const logPath = getLogFilePath();
+      if (!fs.existsSync(logPath)) {
+        return { success: false, error: 'Nenhum arquivo de log encontrado ainda.' };
+      }
+      const raw = fs.readFileSync(logPath, 'utf8');
+      // Limita a ~100KB mais recentes para não sobrecarregar a área de
+      // transferência com arquivos de log muito grandes.
+      const trimmed = raw.length > 100000 ? raw.slice(-100000) : raw;
+      clipboard.writeText(trimmed);
+      log.info('[system:copy-logs] Logs copiados para a área de transferência.');
+      return { success: true };
+    } catch (error) {
+      log.error('[system:copy-logs]', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   startStatsStreaming();
 }
 
@@ -133,7 +155,7 @@ function startStatsStreaming() {
     try {
       const stats = await collectStats();
       win.webContents.send('system:stats-update', stats);
-    } catch (e) { console.error('[stats-update]', e); }
+    } catch (e) { log.error('[stats-update]', e); }
   }, STATS_INTERVAL_MS);
 }
 

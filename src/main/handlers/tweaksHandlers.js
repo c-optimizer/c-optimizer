@@ -1,9 +1,20 @@
 const { ipcMain } = require('electron');
 const os = require('os');
 const store = require('../store');
-const { runCommandSmart } = require('../utils/shell');
+const { runCommandSmart, runShellCommand, runElevatedScriptWithOutput, isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
+const { log } = require('../utils/logger');
+const { saveSnapshot, getSnapshot, removeSnapshot } = require('../utils/snapshotManager');
 
+/**
+ * Catálogo de tweaks. Cada item pode ser:
+ * - LEGADO (padrão atual): tem `commands.win.apply/revert` — aplica/reverte
+ *   "cego", sem checar estado real. Continua funcionando como sempre.
+ * - MOTOR DE SNAPSHOT (novo, `engine: 'snapshot'`): tem `registry` em vez
+ *   de commands.win — o motor lê o valor real antes de aplicar, salva num
+ *   snapshot, aplica, e verifica. `commands.linux` continua existindo como
+ *   fallback simulado fora do Windows.
+ */
 const TWEAKS_CATALOG = [
   {
     id: 'gaming-priority',
@@ -20,16 +31,23 @@ const TWEAKS_CATALOG = [
     }
   },
   {
+    // MIGRADO PARA O MOTOR DE SNAPSHOT — primeiro tweak da Fase 2.
+    // Antes: apply fixava sempre 2, revert fixava sempre 1 — assumindo que
+    // "1" era o valor original de qualquer máquina, o que é falso (pode
+    // nunca ter existido, ou já estar em 2 antes de qualquer ação nossa).
     id: 'gpu-scheduling',
     category: 'GPU',
     title: 'Hardware-Accelerated GPU Scheduling',
     description: 'Ativa o agendamento de GPU via hardware (HAGS) para reduzir latência de renderização.',
     requiresAdmin: true,
+    engine: 'snapshot',
+    registry: {
+      path: 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers',
+      name: 'HwSchMode',
+      applyValue: 2,
+      type: 'DWord'
+    },
     commands: {
-      win: {
-        apply: `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers" -Name "HwSchMode" -Value 2`,
-        revert: `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers" -Name "HwSchMode" -Value 1`
-      },
       linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
@@ -223,16 +241,171 @@ function setTweakState(tweakId, enabled) {
   store.set('tweaksApplied', appliedState);
 }
 
-/**
- * Calcula o score real de otimização: proporção de tweaks ativos em
- * relação ao total do catálogo. Usado pelo Dashboard (via systemHandlers).
- */
 function computeOptimizationScore() {
   const appliedState = store.get('tweaksApplied', {});
   const total = TWEAKS_CATALOG.length;
   const activeCount = TWEAKS_CATALOG.filter((t) => appliedState[t.id]).length;
   const score = total > 0 ? Math.round((activeCount / total) * 100) : 0;
   return { score, activeCount, total };
+}
+
+// --------------------------------------------------------------------
+// Motor de Snapshot: gera scripts PowerShell genéricos a partir de
+// `registry` — nenhum tweak precisa escrever seu próprio PS de leitura.
+// --------------------------------------------------------------------
+
+function buildRegistryReadScript(registry) {
+  return `
+$path = "${registry.path}"
+$name = "${registry.name}"
+$pathExists = Test-Path $path
+$propExists = $false
+$value = $null
+if ($pathExists) {
+  $item = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -ne $item -and ($item.PSObject.Properties.Name -contains $name)) {
+    $propExists = $true
+    $value = $item.$name
+  }
+}
+[PSCustomObject]@{ PathExists = $pathExists; PropertyExists = $propExists; Value = $value } | ConvertTo-Json -Compress
+`.trim();
+}
+
+function buildRegistryApplyScript(registry) {
+  return `
+$path = "${registry.path}"
+$name = "${registry.name}"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+$existing = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
+if ($null -ne $existing -and ($existing.PSObject.Properties.Name -contains $name)) {
+  Set-ItemProperty -Path $path -Name $name -Value ${registry.applyValue}
+} else {
+  New-ItemProperty -Path $path -Name $name -Value ${registry.applyValue} -PropertyType ${registry.type} -Force | Out-Null
+}
+`.trim();
+}
+
+/**
+ * Restaura EXATAMENTE o estado salvo no snapshot: se a propriedade não
+ * existia antes, ela é removida (não "zerada"); se existia com um valor
+ * específico, esse valor exato é reescrito.
+ */
+function buildRegistryRestoreScript(registry, previousState) {
+  const regPath = registry.path;
+  const name = registry.name;
+
+  if (!previousState || !previousState.propertyExists) {
+    return `
+if (Test-Path "${regPath}") {
+  Remove-ItemProperty -Path "${regPath}" -Name "${name}" -ErrorAction SilentlyContinue
+}
+`.trim();
+  }
+
+  return `
+if (-not (Test-Path "${regPath}")) { New-Item -Path "${regPath}" -Force | Out-Null }
+Set-ItemProperty -Path "${regPath}" -Name "${name}" -Value ${previousState.value}
+`.trim();
+}
+
+async function readRegistryState(registry) {
+  const { stdout } = await runShellCommand(buildRegistryReadScript(registry), 10000);
+  const trimmed = (stdout || '').trim();
+  if (!trimmed) return { pathExists: false, propertyExists: false, value: null };
+  const parsed = JSON.parse(trimmed);
+  return {
+    pathExists: !!parsed.PathExists,
+    propertyExists: !!parsed.PropertyExists,
+    value: parsed.Value
+  };
+}
+
+/**
+ * Fluxo completo: Read → Snapshot → Apply → Verify.
+ * Só marca o tweak como ativo se a verificação confirmar o valor real.
+ */
+async function applyWithSnapshot(tweak) {
+  const { registry } = tweak;
+
+  try {
+    log.info(`[snapshot-engine] READ "${tweak.id}" antes de aplicar...`);
+    const before = await readRegistryState(registry);
+    log.info(`[snapshot-engine] Estado atual de "${tweak.id}":`, before);
+
+    saveSnapshot(tweak.id, before);
+
+    log.info(`[snapshot-engine] APPLY "${tweak.id}"...`);
+    await runCommandSmart(buildRegistryApplyScript(registry), tweak.requiresAdmin, 15000);
+
+    log.info(`[snapshot-engine] VERIFY "${tweak.id}"...`);
+    const after = await readRegistryState(registry);
+    const verified = after.propertyExists && Number(after.value) === Number(registry.applyValue);
+
+    if (!verified) {
+      log.error(`[snapshot-engine] Verificação falhou para "${tweak.id}". Esperado ${registry.applyValue}, obtido ${after.value}.`);
+      return { success: false, tweakId: tweak.id, error: 'A alteração não pôde ser confirmada após aplicada. Nada foi marcado como ativo.' };
+    }
+
+    setTweakState(tweak.id, true);
+    log.info(`[snapshot-engine] "${tweak.id}" aplicado e verificado com sucesso.`);
+    return { success: true, tweakId: tweak.id, enabled: true };
+  } catch (error) {
+    log.error(`[snapshot-engine] Erro ao aplicar "${tweak.id}":`, error.message);
+    const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
+    return {
+      success: false, tweakId: tweak.id,
+      error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao aplicar este ajuste.'
+    };
+  }
+}
+
+/**
+ * Fluxo completo: Restore (do snapshot) → Verify → Clean.
+ * Recusa reverter se não existir snapshot — não "adivinha" um padrão.
+ */
+async function revertWithSnapshot(tweak) {
+  const snapshot = getSnapshot(tweak.id);
+
+  if (!snapshot) {
+    log.error(`[snapshot-engine] Nenhum snapshot encontrado para "${tweak.id}" — reversão recusada.`);
+    return {
+      success: false, tweakId: tweak.id,
+      error: 'Nenhum estado original salvo para este ajuste. Não é possível reverter com segurança.'
+    };
+  }
+
+  const { registry } = tweak;
+
+  try {
+    log.info(`[snapshot-engine] RESTORE "${tweak.id}" para o estado original...`, snapshot.previousState);
+    await runCommandSmart(buildRegistryRestoreScript(registry, snapshot.previousState), tweak.requiresAdmin, 15000);
+
+    log.info(`[snapshot-engine] VERIFY (restore) "${tweak.id}"...`);
+    const after = await readRegistryState(registry);
+
+    const expectedExists = snapshot.previousState.propertyExists;
+    const restored = expectedExists
+      ? (after.propertyExists && Number(after.value) === Number(snapshot.previousState.value))
+      : !after.propertyExists;
+
+    if (!restored) {
+      log.error(`[snapshot-engine] Falha ao verificar restauração de "${tweak.id}".`, after);
+      return { success: false, tweakId: tweak.id, error: 'Não foi possível confirmar a restauração do valor original. O snapshot foi mantido.' };
+    }
+
+    removeSnapshot(tweak.id);
+    setTweakState(tweak.id, false);
+    log.info(`[snapshot-engine] "${tweak.id}" restaurado e verificado com sucesso.`);
+    return { success: true, tweakId: tweak.id, enabled: false };
+  } catch (error) {
+    log.error(`[snapshot-engine] Erro ao restaurar "${tweak.id}":`, error.message);
+    const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
+    return {
+      success: false, tweakId: tweak.id,
+      error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao restaurar este ajuste.'
+    };
+  }
 }
 
 function registerTweaksHandlers() {
@@ -242,13 +415,21 @@ function registerTweaksHandlers() {
   ipcMain.handle('tweaks:apply', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
+
+    // Motor novo: só no Windows, já que registry não existe em outros SOs.
+    if (tweak.engine === 'snapshot' && os.platform() === 'win32') {
+      return applyWithSnapshot(tweak);
+    }
+
+    // Caminho legado (inalterado) — cobre todos os outros tweaks e o
+    // fallback simulado do próprio HAGS fora do Windows.
     const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
     try {
       await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, true);
       return { success: true, tweakId, enabled: true };
     } catch (error) {
-      console.error(`[tweaks:apply] "${tweakId}":`, error.message);
+      log.error(`[tweaks:apply] "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false, tweakId,
@@ -260,13 +441,18 @@ function registerTweaksHandlers() {
   ipcMain.handle('tweaks:revert', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
+
+    if (tweak.engine === 'snapshot' && os.platform() === 'win32') {
+      return revertWithSnapshot(tweak);
+    }
+
     const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
     try {
       await runCommandSmart(commandSet.revert, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, false);
       return { success: true, tweakId, enabled: false };
     } catch (error) {
-      console.error(`[tweaks:revert] "${tweakId}":`, error.message);
+      log.error(`[tweaks:revert] "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false, tweakId,
@@ -274,6 +460,120 @@ function registerTweaksHandlers() {
       };
     }
   }));
+
+  ipcMain.handle('tweaks:revert-all', withLicense(async () => {
+    try {
+      return await revertAllTweaks();
+    } catch (error) {
+      log.error('[tweaks:revert-all]', error);
+      return { success: false, error: 'Falha ao restaurar as otimizações.' };
+    }
+  }));
+}
+
+/**
+ * Reversão em lote (já existente da rodada anterior). Tweaks com motor de
+ * snapshot são revertidos individualmente ANTES do lote legado, cada um
+ * com seu próprio Verify — não entram no script elevado agrupado, porque
+ * precisam ler o snapshot específico de cada um, não apenas "desfazer cego".
+ */
+async function revertAllTweaks() {
+  const platform = os.platform();
+  const appliedState = store.get('tweaksApplied', {});
+  const activeTweaks = TWEAKS_CATALOG.filter((t) => appliedState[t.id]);
+
+  if (activeTweaks.length === 0) {
+    return { success: true, reverted: [], failed: [] };
+  }
+
+  const reverted = [];
+  const failed = [];
+
+  const snapshotTweaks = activeTweaks.filter((t) => t.engine === 'snapshot' && platform === 'win32');
+  const legacyUserTweaks = activeTweaks.filter((t) => !(t.engine === 'snapshot' && platform === 'win32') && !t.requiresAdmin);
+  const legacyAdminTweaks = activeTweaks.filter((t) => !(t.engine === 'snapshot' && platform === 'win32') && t.requiresAdmin);
+
+  // Tweaks com snapshot: revertidos um por um, com seu próprio Verify.
+  for (const tweak of snapshotTweaks) {
+    const result = await revertWithSnapshot(tweak);
+    if (result.success) reverted.push(tweak.id);
+    else failed.push({ id: tweak.id, error: result.error });
+  }
+
+  // Legado sem admin: revertido direto, sem UAC.
+  for (const tweak of legacyUserTweaks) {
+    const cmd = platform === 'win32' ? tweak.commands.win.revert : tweak.commands.linux.revert;
+    try {
+      await runShellCommand(cmd, 15000);
+      reverted.push(tweak.id);
+    } catch (error) {
+      log.error(`[tweaks:revert-all] Falha ao reverter "${tweak.id}" (sem admin):`, error.message);
+      failed.push({ id: tweak.id, error: error.message });
+    }
+  }
+
+  // Legado com admin: agrupados em um único script elevado (um só UAC).
+  if (legacyAdminTweaks.length > 0) {
+    if (platform !== 'win32') {
+      for (const tweak of legacyAdminTweaks) {
+        try {
+          await runShellCommand(tweak.commands.linux.revert, 15000);
+          reverted.push(tweak.id);
+        } catch (error) {
+          failed.push({ id: tweak.id, error: error.message });
+        }
+      }
+    } else if (isRunningAsAdmin()) {
+      for (const tweak of legacyAdminTweaks) {
+        try {
+          await runShellCommand(tweak.commands.win.revert, 15000);
+          reverted.push(tweak.id);
+        } catch (error) {
+          log.error(`[tweaks:revert-all] Falha ao reverter "${tweak.id}" (já admin):`, error.message);
+          failed.push({ id: tweak.id, error: error.message });
+        }
+      }
+    } else {
+      const scriptBody = legacyAdminTweaks.map((tweak) => `
+try {
+${tweak.commands.win.revert}
+$results += [PSCustomObject]@{ Id = '${tweak.id}'; Success = $true }
+} catch {
+$results += [PSCustomObject]@{ Id = '${tweak.id}'; Success = $false; Error = $_.Exception.Message }
+}
+`).join('\n');
+
+      const fullScript = `
+$results = @()
+${scriptBody}
+$__resultJson = $results | ConvertTo-Json -Compress
+`.trim();
+
+      try {
+        const raw = await runElevatedScriptWithOutput(fullScript, 60000);
+        const list = Array.isArray(raw) ? raw : [raw];
+        list.forEach((r) => {
+          if (r.Success) reverted.push(r.Id);
+          else failed.push({ id: r.Id, error: r.Error });
+        });
+      } catch (error) {
+        log.error('[tweaks:revert-all] Falha no lote elevado:', error.message);
+        const userCancelled = error.message.includes('cancelado') || error.message.includes('Código:');
+        legacyAdminTweaks.forEach((t) => failed.push({
+          id: t.id,
+          error: userCancelled ? 'Permissão de administrador cancelada.' : error.message
+        }));
+      }
+    }
+  }
+
+  const newState = { ...appliedState };
+  reverted.forEach((id) => { newState[id] = false; });
+  store.set('tweaksApplied', newState);
+
+  log.info(`[tweaks:revert-all] ${reverted.length} revertido(s), ${failed.length} falha(s).`);
+
+  return { success: failed.length === 0, reverted, failed };
 }
 
 module.exports = { registerTweaksHandlers, computeOptimizationScore };
