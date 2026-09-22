@@ -1,19 +1,23 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Whitelist de canais permitidos — princípio de segurança:
-// o Renderer NUNCA tem acesso direto ao ipcRenderer bruto.
 const validInvokeChannels = [
   // Dashboard
   'system:get-stats',
   'system:get-info',
   'system:get-optimization-status',
   'system:is-admin',
-
+  'system:get-memory-profile',
+  'system:open-external',
+  
   // Otimizações
   'tweaks:get-catalog',
   'tweaks:apply',
   'tweaks:revert',
   'tweaks:get-applied-state',
+
+  // Disco
+  'disk:list-volumes',
+  'disk:optimize',
 
   // Limpeza do Sistema
   'cleanup:get-targets',
@@ -27,9 +31,11 @@ const validInvokeChannels = [
   'restore:create-point',
   'restore:enable-protection',
 
-  // Apps / Bloatware
+  // Apps / Bloatware / Winget
   'apps:list-installed',
   'apps:uninstall-batch',
+  'winget:install',
+  'winget:check-installed',
 
   // Configurações
   'settings:get',
@@ -42,7 +48,7 @@ const validInvokeChannels = [
   'auth:get-stored-license',
   'auth:logout',
 
-  // Atualização
+  // Auto-update
   'update:start-download',
   'update:quit-and-install'
 ];
@@ -53,7 +59,8 @@ const validOnChannels = [
   'tweaks:progress',
   'update:available',
   'update:progress',
-  'update:downloaded'
+  'update:downloaded',
+  'winget:progress'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

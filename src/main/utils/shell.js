@@ -116,7 +116,11 @@ function isRunningAsAdmin() {
  * próprio script grava em arquivo — necessário porque Start-Process -Verb RunAs
  * não devolve stdout ao processo pai.
  *
- * Mesma observação do runElevatedCommand: sem -WindowStyle Hidden, de propósito.
+ * Diferença desta versão: o script interno agora captura qualquer exceção
+ * e grava o erro real no $__resultJson (em vez de falhar silenciosamente),
+ * e o stderr do processo-ponte (não-elevado) também é capturado — assim,
+ * se algo falhar antes mesmo do UAC aparecer, a mensagem de erro chega
+ * com informação real, não genérica.
  */
 function runElevatedScriptWithOutput(scriptBody, timeoutMs = 40000) {
   return new Promise((resolve, reject) => {
@@ -124,9 +128,16 @@ function runElevatedScriptWithOutput(scriptBody, timeoutMs = 40000) {
     const scriptPath = path.join(os.tmpdir(), `c_opt_out_${id}.ps1`);
     const outputPath = path.join(os.tmpdir(), `c_opt_out_${id}_result.json`);
 
+    // O script interno agora envolve tudo em try/catch: se algo quebrar
+    // (ex: Get-ComputerRestorePoint sem permissão, erro de sintaxe, etc.),
+    // o próprio erro vira o resultado, em vez de o processo só morrer.
     const fullScript = `
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
+try {
 ${scriptBody}
+} catch {
+  $__resultJson = (@{ __error = $_.Exception.Message } | ConvertTo-Json -Compress)
+}
 $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
 `.trim();
 
@@ -136,7 +147,7 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
     }
 
     try {
-      fs.writeFileSync(tempFilePath, '\uFEFF' + scriptContent, 'utf8');
+      fs.writeFileSync(scriptPath, '\uFEFF' + fullScript, 'utf8');
     } catch (err) {
       return reject(err);
     }
@@ -150,6 +161,11 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
 
     const child = spawn('powershell.exe', psArgs, { windowsHide: true });
 
+    let stderrBuffer = '';
+    child.stderr?.on('data', (chunk) => {
+      stderrBuffer += chunk.toString();
+    });
+
     const timer = setTimeout(() => {
       child.kill();
       cleanup();
@@ -158,18 +174,47 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
 
     child.on('close', (code) => {
       clearTimeout(timer);
+
       if (code !== 0) {
         cleanup();
-        return reject(new Error(`O comando elevado falhou ou foi cancelado (Código: ${code})`));
+        const detail = stderrBuffer.trim();
+        return reject(new Error(
+          `O comando elevado falhou ou foi cancelado (Código: ${code})${detail ? ` — ${detail}` : ''}`
+        ));
       }
+
+      let raw;
       try {
-        const raw = fs.readFileSync(outputPath, 'utf8');
-        cleanup();
-        resolve(JSON.parse(raw.trim()));
+        raw = fs.readFileSync(outputPath, 'utf8').trim();
       } catch (err) {
         cleanup();
-        reject(err);
+        // Processo terminou com sucesso (código 0), mas nenhum arquivo de
+        // resultado foi criado — geralmente indica que o UAC foi negado
+        // automaticamente por política do sistema, sem chegar a exibir o prompt.
+        return reject(new Error(
+          'A permissão de administrador foi negada automaticamente pelo Windows, sem exibir o prompt. Verifique as políticas de UAC do sistema.'
+        ));
       }
+
+      cleanup();
+
+      if (!raw) {
+        return resolve([]);
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        return reject(new Error(`Resposta inesperada do script elevado: ${raw.slice(0, 200)}`));
+      }
+
+      // Se o script capturou uma exceção internamente, propaga como erro real
+      if (parsed && parsed.__error) {
+        return reject(new Error(parsed.__error));
+      }
+
+      resolve(parsed);
     });
 
     child.on('error', (err) => {

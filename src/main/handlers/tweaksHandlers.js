@@ -15,27 +15,21 @@ const TWEAKS_CATALOG = [
         apply: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
         revert: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
       },
-      linux: {
-        apply: `echo "Ajuste de prioridade aplicado (simulado neste SO)"`,
-        revert: `echo "Ajuste de prioridade revertido (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
     id: 'gpu-scheduling',
     category: 'GPU',
     title: 'Hardware-Accelerated GPU Scheduling',
-    description: 'Ativa o agendamento de GPU via hardware para reduzir latência de renderização.',
+    description: 'Ativa o agendamento de GPU via hardware (HAGS) para reduzir latência de renderização.',
     requiresAdmin: true,
     commands: {
       win: {
         apply: `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers" -Name "HwSchMode" -Value 2`,
         revert: `Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers" -Name "HwSchMode" -Value 1`
       },
-      linux: {
-        apply: `echo "GPU scheduling ajustado (simulado neste SO)"`,
-        revert: `echo "GPU scheduling revertido (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
@@ -49,10 +43,42 @@ const TWEAKS_CATALOG = [
         apply: `Get-ChildItem "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue }`,
         revert: `Get-ChildItem "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" | ForEach-Object { Remove-ItemProperty -Path $_.PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue; Remove-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -ErrorAction SilentlyContinue }`
       },
-      linux: {
-        apply: `echo "Nagle desativado (simulado neste SO)"`,
-        revert: `echo "Nagle reativado (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
+  },
+  {
+    // MESCLADO: já cobria NetworkThrottlingIndex/SystemResponsiveness (pedido do Kanban).
+    // Adicionamos agora o perfil "Games" (GPU Priority=8, Priority=6), que é a parte
+    // que faltava do item "Timer Resolution / System Responsiveness" do backlog.
+    id: 'network-throttling',
+    category: 'Rede',
+    title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
+    description: 'Remove o limite de rede em segundo plano e configura o perfil MMCSS de jogos com prioridade máxima de CPU/GPU.',
+    requiresAdmin: true,
+    commands: {
+      win: {
+        apply: `
+$profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Force | Out-Null }
+Set-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -Value 0xffffffff
+Set-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -Value 0
+$gamesPath = "$profilePath\\Tasks\\Games"
+if (-not (Test-Path $gamesPath)) { New-Item -Path $gamesPath -Force | Out-Null }
+Set-ItemProperty -Path $gamesPath -Name "GPU Priority" -Value 8
+Set-ItemProperty -Path $gamesPath -Name "Priority" -Value 6
+Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "High"
+        `.trim(),
+        revert: `
+$profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+Set-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -Value 10 -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -Value 20 -ErrorAction SilentlyContinue
+$gamesPath = "$profilePath\\Tasks\\Games"
+Set-ItemProperty -Path $gamesPath -Name "GPU Priority" -Value 8 -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $gamesPath -Name "Priority" -Value 2 -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "Medium" -ErrorAction SilentlyContinue
+        `.trim()
+      },
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
@@ -66,10 +92,7 @@ const TWEAKS_CATALOG = [
         apply: `if (-not (Test-Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection")) { New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0`,
         revert: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 1 -ErrorAction SilentlyContinue`
       },
-      linux: {
-        apply: `echo "Telemetria desativada (simulado neste SO)"`,
-        revert: `echo "Telemetria reativada (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
@@ -83,44 +106,94 @@ const TWEAKS_CATALOG = [
         apply: `powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61`,
         revert: `powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e`
       },
-      linux: {
-        apply: `echo "Plano de energia ajustado (simulado neste SO)"`,
-        revert: `echo "Plano de energia revertido (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
-    id: 'gpu-latency',
-    category: 'GPU',
-    title: 'Baixa Latência NVIDIA Reflex',
-    description: 'Reduz a fila de renderização para menor input lag em jogos competitivos.',
+    id: 'visual-performance',
+    category: 'Performance',
+    title: 'Priorizar Desempenho Visual',
+    description: 'Desativa animações de janelas, sombras e transparências, mantendo as fontes suaves (ClearType) intactas.',
     requiresAdmin: false,
     commands: {
       win: {
-        apply: `echo "Ajuste de latência NVIDIA aplicado (requer NVIDIA Profile Inspector para efeito real)"`,
-        revert: `echo "Ajuste de latência NVIDIA revertido"`
+        apply: `Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -Value "0" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -Value "0" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -Value 0 -ErrorAction SilentlyContinue`,
+        revert: `Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -Value "1" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -Value "1" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -Value 1 -ErrorAction SilentlyContinue`
       },
-      linux: {
-        apply: `echo "Ajuste de latência NVIDIA aplicado (simulado neste SO)"`,
-        revert: `echo "Ajuste de latência NVIDIA revertido (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
-    id: 'network-dns',
-    category: 'Rede',
-    title: 'DNS Otimizado para Jogos',
-    description: 'Substitui o DNS padrão por servidores de baixa latência (Cloudflare 1.1.1.1).',
+    id: 'disable-hpet',
+    category: 'Performance',
+    title: 'Desativar HPET (Timer de Alta Precisão)',
+    description: 'Reduz o overhead de sincronização de timer do Windows, diminuindo o input lag em jogos competitivos.',
     requiresAdmin: true,
+    requiresReboot: true,
     commands: {
       win: {
-        apply: `Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses ("1.1.1.1","1.0.0.1") }`,
-        revert: `Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ResetServerAddresses }`
+        apply: `bcdedit /deletevalue useplatformclock 2>$null; bcdedit /set disabledynamictick yes 2>$null; exit 0`,
+        revert: `bcdedit /deletevalue useplatformclock 2>$null; bcdedit /deletevalue disabledynamictick 2>$null; exit 0`
       },
-      linux: {
-        apply: `echo "DNS ajustado (simulado neste SO)"`,
-        revert: `echo "DNS revertido (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
+  },
+  {
+    // CORRIGIDO: agora força a atualização imediata da sessão via
+    // SystemParametersInfo (SPI_SETMOUSE), sem precisar de logoff.
+    id: 'disable-mouse-accel',
+    category: 'Gaming',
+    title: 'Desativar Aceleração do Mouse',
+    description: 'Garante resposta 1:1 do ponteiro (Precision Pointer), essencial para mira precisa em jogos FPS.',
+    requiresAdmin: false,
+    commands: {
+      win: {
+        apply: `
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -Value "0"
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -Value "0"
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -Value "0"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseNative {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+}
+"@
+$mouseParams = @(0, 0, 0)
+[MouseNative]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
+        `.trim(),
+        revert: `
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -Value "1"
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -Value "6"
+Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -Value "10"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseNativeRevert {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+}
+"@
+$mouseParams = @(6, 10, 1)
+[MouseNativeRevert]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
+        `.trim()
+      },
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
+  },
+  {
+    id: 'disable-fullscreen-opt',
+    category: 'Gaming',
+    title: 'Desativar Otimizações de Tela Cheia',
+    description: 'Desativa Fullscreen Optimizations e a gravação do Game Bar em segundo plano, reduzindo input lag e stutter.',
+    requiresAdmin: false,
+    commands: {
+      win: {
+        apply: `if (-not (Test-Path "HKCU:\\System\\GameConfigStore")) { New-Item -Path "HKCU:\\System\\GameConfigStore" -Force | Out-Null }; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 2; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -Value 2; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Value 1; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -Value 0; if (-not (Test-Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR")) { New-Item -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Force | Out-Null }; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -Value 0`,
+        revert: `Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -Value 1 -ErrorAction SilentlyContinue`
+      },
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
   {
@@ -134,22 +207,16 @@ const TWEAKS_CATALOG = [
         apply: `Set-ItemProperty -Path "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1 -ErrorAction SilentlyContinue`,
         revert: `Set-ItemProperty -Path "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 0 -ErrorAction SilentlyContinue`
       },
-      linux: {
-        apply: `echo "Apps em segundo plano suspensos (simulado neste SO)"`,
-        revert: `echo "Apps em segundo plano reativados (simulado neste SO)"`
-      }
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   }
 ];
 
 function getPublicCatalog() {
   const appliedState = store.get('tweaksApplied', {});
-  return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin }) => ({
-    id,
-    category,
-    title,
-    description,
-    requiresAdmin,
+  return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin, requiresReboot }) => ({
+    id, category, title, description, requiresAdmin,
+    requiresReboot: !!requiresReboot,
     enabled: appliedState[id] || false
   }));
 }
@@ -161,62 +228,41 @@ function setTweakState(tweakId, enabled) {
 }
 
 function registerTweaksHandlers() {
-  ipcMain.handle('tweaks:get-catalog', async () => {
-    return getPublicCatalog();
-  });
-
-  ipcMain.handle('tweaks:get-applied-state', async () => {
-    return store.get('tweaksApplied', {});
-  });
+  ipcMain.handle('tweaks:get-catalog', async () => getPublicCatalog());
+  ipcMain.handle('tweaks:get-applied-state', async () => store.get('tweaksApplied', {}));
 
   ipcMain.handle('tweaks:apply', async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
-    if (!tweak) {
-      return { success: false, error: `Tweak "${tweakId}" não encontrado no catálogo.` };
-    }
-
-    const platform = os.platform();
-    const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
-
+    if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
+    const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
     try {
       await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, true);
       return { success: true, tweakId, enabled: true };
     } catch (error) {
-      console.error(`[tweaks:apply] Erro ao aplicar "${tweakId}":`, error.message);
+      console.error(`[tweaks:apply] "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
-        success: false,
-        tweakId,
-        error: userCancelled
-          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
-          : 'Falha ao aplicar este ajuste. Tente novamente.'
+        success: false, tweakId,
+        error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao aplicar este ajuste.'
       };
     }
   });
 
   ipcMain.handle('tweaks:revert', async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
-    if (!tweak) {
-      return { success: false, error: `Tweak "${tweakId}" não encontrado no catálogo.` };
-    }
-
-    const platform = os.platform();
-    const commandSet = platform === 'win32' ? tweak.commands.win : tweak.commands.linux;
-
+    if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
+    const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
     try {
       await runCommandSmart(commandSet.revert, tweak.requiresAdmin, 15000);
       setTweakState(tweakId, false);
       return { success: true, tweakId, enabled: false };
     } catch (error) {
-      console.error(`[tweaks:revert] Erro ao reverter "${tweakId}":`, error.message);
+      console.error(`[tweaks:revert] "${tweakId}":`, error.message);
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
-        success: false,
-        tweakId,
-        error: userCancelled
-          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
-          : 'Falha ao reverter este ajuste. Tente novamente.'
+        success: false, tweakId,
+        error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao reverter este ajuste.'
       };
     }
   });
