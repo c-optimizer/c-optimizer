@@ -4,8 +4,17 @@ const path = require('path');
 const os = require('os');
 
 /**
- * Executa um script PowerShell criando um arquivo temporário .ps1
- * para evitar falsos-positivos de antivírus com -EncodedCommand.
+ * Executa um script PowerShell criando um arquivo temporário .ps1.
+ *
+ * Duas correções de encoding aqui:
+ * 1. O arquivo é escrito com BOM UTF-8 ('\uFEFF' no início) — sem isso, o
+ *    PowerShell 5.1 pode interpretar caracteres acentuados do PRÓPRIO
+ *    SCRIPT (ex: "Segurança" dentro de uma string) usando o codepage ANSI
+ *    do sistema, corrompendo-os antes mesmo da execução.
+ * 2. `encoding: 'utf8'` nas opções do exec garante que o Node decodifique
+ *    o stdout/stderr como UTF-8 — sem isso, mesmo um script que já emite
+ *    UTF-8 corretamente (via [Console]::OutputEncoding) é relido errado
+ *    pelo lado Node, reproduzindo o mesmo mojibake.
  */
 function runPowerShellScript(scriptContent, options = {}) {
   return new Promise((resolve, reject) => {
@@ -17,7 +26,7 @@ function runPowerShellScript(scriptContent, options = {}) {
 
       const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tempFilePath}"`;
 
-      exec(command, {...options, encoding: 'utf8' }, (error, stdout, stderr) => {
+      exec(command, { ...options, encoding: 'utf8' }, (error, stdout, stderr) => {
         fs.unlink(tempFilePath, () => {});
 
         if (error) {
@@ -32,23 +41,10 @@ function runPowerShellScript(scriptContent, options = {}) {
   });
 }
 
-/**
- * Alias para manter compatibilidade com módulos que chamam runShellCommand.
- */
 function runShellCommand(scriptContent, timeoutMs = 20000) {
   return runPowerShellScript(scriptContent, { timeout: timeoutMs });
 }
 
-/**
- * Executa comando elevado via UAC criando também um script temporário.
- *
- * IMPORTANTE: propositalmente NÃO usamos -WindowStyle Hidden aqui.
- * Um processo elevado, sem assinatura digital, com janela oculta e que
- * modifica o registro do Windows é um padrão comportamental clássico de
- * heurísticas de antivírus (gerou falso positivo "Trojan:Win32/Commando.A!ml"
- * em testes reais). A janela do PowerShell aparecer brevemente é só estética;
- * escondê-la aumenta a chance de o app inteiro ser sinalizado como malware.
- */
 function runElevatedCommand(scriptContent) {
   return new Promise((resolve, reject) => {
     const tempFileName = `c_opt_elev_${Date.now()}_${Math.random().toString(36).substring(7)}.ps1`;
@@ -86,11 +82,6 @@ function runElevatedCommand(scriptContent) {
   });
 }
 
-/**
- * Executa o comando de forma inteligente:
- * Se exigir privilégios de Admin e o app não estiver em modo Admin, solicita UAC (runElevatedCommand).
- * Caso contrário, executa direto via runPowerShellScript.
- */
 async function runCommandSmart(scriptContent, requiresAdmin = false, timeoutMs = 20000) {
   if (requiresAdmin && !isRunningAsAdmin()) {
     return await runElevatedCommand(scriptContent);
@@ -99,9 +90,6 @@ async function runCommandSmart(scriptContent, requiresAdmin = false, timeoutMs =
   }
 }
 
-/**
- * Verifica se a aplicação está sendo executada como Administrador
- */
 function isRunningAsAdmin() {
   try {
     execSync('net session', { stdio: 'ignore' });
@@ -111,33 +99,15 @@ function isRunningAsAdmin() {
   }
 }
 
-/**
- * Executa um script elevado (um único UAC) e retorna o resultado que o
- * próprio script grava em arquivo — necessário porque Start-Process -Verb RunAs
- * não devolve stdout ao processo pai.
- *
- * Diferença desta versão: o script interno agora captura qualquer exceção
- * e grava o erro real no $__resultJson (em vez de falhar silenciosamente),
- * e o stderr do processo-ponte (não-elevado) também é capturado — assim,
- * se algo falhar antes mesmo do UAC aparecer, a mensagem de erro chega
- * com informação real, não genérica.
- */
 function runElevatedScriptWithOutput(scriptBody, timeoutMs = 40000) {
   return new Promise((resolve, reject) => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const scriptPath = path.join(os.tmpdir(), `c_opt_out_${id}.ps1`);
     const outputPath = path.join(os.tmpdir(), `c_opt_out_${id}_result.json`);
 
-    // O script interno agora envolve tudo em try/catch: se algo quebrar
-    // (ex: Get-ComputerRestorePoint sem permissão, erro de sintaxe, etc.),
-    // o próprio erro vira o resultado, em vez de o processo só morrer.
     const fullScript = `
-$ErrorActionPreference = 'Stop'
-try {
+$ErrorActionPreference = 'Continue'
 ${scriptBody}
-} catch {
-  $__resultJson = (@{ __error = $_.Exception.Message } | ConvertTo-Json -Compress)
-}
 $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
 `.trim();
 
@@ -163,7 +133,7 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
 
     let stderrBuffer = '';
     child.stderr?.on('data', (chunk) => {
-      stderrBuffer += chunk.toString();
+      stderrBuffer += chunk.toString('utf8');
     });
 
     const timer = setTimeout(() => {
@@ -188,9 +158,6 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
         raw = fs.readFileSync(outputPath, 'utf8').trim();
       } catch (err) {
         cleanup();
-        // Processo terminou com sucesso (código 0), mas nenhum arquivo de
-        // resultado foi criado — geralmente indica que o UAC foi negado
-        // automaticamente por política do sistema, sem chegar a exibir o prompt.
         return reject(new Error(
           'A permissão de administrador foi negada automaticamente pelo Windows, sem exibir o prompt. Verifique as políticas de UAC do sistema.'
         ));
@@ -209,7 +176,6 @@ $__resultJson | Out-File -FilePath '${outputPath}' -Encoding UTF8
         return reject(new Error(`Resposta inesperada do script elevado: ${raw.slice(0, 200)}`));
       }
 
-      // Se o script capturou uma exceção internamente, propaga como erro real
       if (parsed && parsed.__error) {
         return reject(new Error(parsed.__error));
       }

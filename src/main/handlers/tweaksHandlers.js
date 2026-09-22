@@ -8,12 +8,13 @@ const { saveSnapshot, getSnapshot, removeSnapshot } = require('../utils/snapshot
 
 /**
  * Catálogo de tweaks. Cada item pode ser:
- * - LEGADO (padrão atual): tem `commands.win.apply/revert` — aplica/reverte
- *   "cego", sem checar estado real. Continua funcionando como sempre.
- * - MOTOR DE SNAPSHOT (novo, `engine: 'snapshot'`): tem `registry` em vez
- *   de commands.win — o motor lê o valor real antes de aplicar, salva num
- *   snapshot, aplica, e verifica. `commands.linux` continua existindo como
- *   fallback simulado fora do Windows.
+ * - LEGADO: tem `commands.win.apply/revert` — aplica/reverte "cego".
+ * - MOTOR AGNÓSTICO (`engine: 'snapshot'`): tem `read`, `apply`, `verify`,
+ *   `restore`, cada um com seu próprio `.script` PowerShell. Nenhum deles
+ *   é gerado pelo Node — cada tweak escreve seu próprio script, retornando
+ *   sempre o contrato { success, exists, value }. Isso permite migrar
+ *   qualquer tipo de estado no futuro (registro, serviço, bcdedit, arquivo
+ *   de config), não só chaves de registro.
  */
 const TWEAKS_CATALOG = [
   {
@@ -31,21 +32,73 @@ const TWEAKS_CATALOG = [
     }
   },
   {
-    // MIGRADO PARA O MOTOR DE SNAPSHOT — primeiro tweak da Fase 2.
-    // Antes: apply fixava sempre 2, revert fixava sempre 1 — assumindo que
-    // "1" era o valor original de qualquer máquina, o que é falso (pode
-    // nunca ter existido, ou já estar em 2 antes de qualquer ação nossa).
     id: 'gpu-scheduling',
     category: 'GPU',
     title: 'Hardware-Accelerated GPU Scheduling',
     description: 'Ativa o agendamento de GPU via hardware (HAGS) para reduzir latência de renderização.',
+    risk: 'medium',
     requiresAdmin: true,
+    createsBackup: true,
+    requiresReboot: true,
     engine: 'snapshot',
-    registry: {
-      path: 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers',
-      name: 'HwSchMode',
-      applyValue: 2,
-      type: 'DWord'
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers"
+$name = "HwSchMode"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "HwSchMode" -PropertyType DWord -Value 2 -Force -ErrorAction Stop
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "HwSchMode" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.HwSchMode } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true, value: 2 }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers"
+$name = "HwSchMode"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+      `
     },
     commands: {
       linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
@@ -228,9 +281,11 @@ $mouseParams = @(6, 10, 1)
 
 function getPublicCatalog() {
   const appliedState = store.get('tweaksApplied', {});
-  return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin, requiresReboot }) => ({
+  return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin, requiresReboot, risk, createsBackup }) => ({
     id, category, title, description, requiresAdmin,
     requiresReboot: !!requiresReboot,
+    risk: risk || 'low',
+    createsBackup: !!createsBackup,
     enabled: appliedState[id] || false
   }));
 }
@@ -250,101 +305,71 @@ function computeOptimizationScore() {
 }
 
 // --------------------------------------------------------------------
-// Motor de Snapshot: gera scripts PowerShell genéricos a partir de
-// `registry` — nenhum tweak precisa escrever seu próprio PS de leitura.
+// Motor agnóstico: executa qualquer script read/verify que siga o
+// contrato { success, exists, value, error? }.
 // --------------------------------------------------------------------
 
-function buildRegistryReadScript(registry) {
-  return `
-$path = "${registry.path}"
-$name = "${registry.name}"
-$pathExists = Test-Path $path
-$propExists = $false
-$value = $null
-if ($pathExists) {
-  $item = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
-  if ($null -ne $item -and ($item.PSObject.Properties.Name -contains $name)) {
-    $propExists = $true
-    $value = $item.$name
-  }
-}
-[PSCustomObject]@{ PathExists = $pathExists; PropertyExists = $propExists; Value = $value } | ConvertTo-Json -Compress
-`.trim();
-}
-
-function buildRegistryApplyScript(registry) {
-  return `
-$path = "${registry.path}"
-$name = "${registry.name}"
-if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-$existing = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
-if ($null -ne $existing -and ($existing.PSObject.Properties.Name -contains $name)) {
-  Set-ItemProperty -Path $path -Name $name -Value ${registry.applyValue}
-} else {
-  New-ItemProperty -Path $path -Name $name -Value ${registry.applyValue} -PropertyType ${registry.type} -Force | Out-Null
-}
-`.trim();
-}
-
 /**
- * Restaura EXATAMENTE o estado salvo no snapshot: se a propriedade não
- * existia antes, ela é removida (não "zerada"); se existia com um valor
- * específico, esse valor exato é reescrito.
+ * Converte um valor JS em literal PowerShell seguro para injeção em script
+ * (usado ao montar o restore com $snapshotValue).
  */
-function buildRegistryRestoreScript(registry, previousState) {
-  const regPath = registry.path;
-  const name = registry.name;
-
-  if (!previousState || !previousState.propertyExists) {
-    return `
-if (Test-Path "${regPath}") {
-  Remove-ItemProperty -Path "${regPath}" -Name "${name}" -ErrorAction SilentlyContinue
+function formatPsLiteral(value) {
+  if (value === null || value === undefined) return '$null';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? '$true' : '$false';
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
-`.trim();
+
+async function runScriptAndParse(script, timeoutMs = 15000) {
+  const { stdout } = await runShellCommand(script, timeoutMs);
+  const trimmed = (stdout || '').trim();
+  if (!trimmed) {
+    throw new Error('O script não retornou nenhuma saída.');
   }
 
-  return `
-if (-not (Test-Path "${regPath}")) { New-Item -Path "${regPath}" -Force | Out-Null }
-Set-ItemProperty -Path "${regPath}" -Name "${name}" -Value ${previousState.value}
-`.trim();
-}
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (err) {
+    throw new Error(`Saída inesperada do script: ${trimmed.slice(0, 200)}`);
+  }
 
-async function readRegistryState(registry) {
-  const { stdout } = await runShellCommand(buildRegistryReadScript(registry), 10000);
-  const trimmed = (stdout || '').trim();
-  if (!trimmed) return { pathExists: false, propertyExists: false, value: null };
-  const parsed = JSON.parse(trimmed);
-  return {
-    pathExists: !!parsed.PathExists,
-    propertyExists: !!parsed.PropertyExists,
-    value: parsed.Value
-  };
+  if (parsed.success === false) {
+    throw new Error(parsed.error || 'O script reportou uma falha.');
+  }
+
+  return parsed;
 }
 
 /**
- * Fluxo completo: Read → Snapshot → Apply → Verify.
- * Só marca o tweak como ativo se a verificação confirmar o valor real.
+ * Fluxo: Read → Snapshot → Apply → Verify.
+ * Só marca como ativo se o Verify confirmar o valor esperado.
  */
 async function applyWithSnapshot(tweak) {
-  const { registry } = tweak;
-
   try {
-    log.info(`[snapshot-engine] READ "${tweak.id}" antes de aplicar...`);
-    const before = await readRegistryState(registry);
+    log.info(`[snapshot-engine] READ "${tweak.id}"...`);
+    const before = await runScriptAndParse(tweak.read.script);
     log.info(`[snapshot-engine] Estado atual de "${tweak.id}":`, before);
 
-    saveSnapshot(tweak.id, before);
+    saveSnapshot(tweak.id, { exists: !!before.exists, value: before.value ?? null });
 
     log.info(`[snapshot-engine] APPLY "${tweak.id}"...`);
-    await runCommandSmart(buildRegistryApplyScript(registry), tweak.requiresAdmin, 15000);
+    await runCommandSmart(tweak.apply.script, tweak.requiresAdmin, 15000);
 
     log.info(`[snapshot-engine] VERIFY "${tweak.id}"...`);
-    const after = await readRegistryState(registry);
-    const verified = after.propertyExists && Number(after.value) === Number(registry.applyValue);
+    const after = await runScriptAndParse(tweak.verify.script);
+
+    const expected = tweak.verify.expected || {};
+    const verified =
+      (expected.exists === undefined || !!after.exists === !!expected.exists) &&
+      (expected.value === undefined || String(after.value) === String(expected.value));
 
     if (!verified) {
-      log.error(`[snapshot-engine] Verificação falhou para "${tweak.id}". Esperado ${registry.applyValue}, obtido ${after.value}.`);
-      return { success: false, tweakId: tweak.id, error: 'A alteração não pôde ser confirmada após aplicada. Nada foi marcado como ativo.' };
+      log.error(`[snapshot-engine] Verificação falhou para "${tweak.id}". Esperado:`, expected, 'Obtido:', after);
+      return {
+        success: false, tweakId: tweak.id,
+        error: 'A alteração não pôde ser confirmada após aplicada. Nada foi marcado como ativo.'
+      };
     }
 
     setTweakState(tweak.id, true);
@@ -355,14 +380,16 @@ async function applyWithSnapshot(tweak) {
     const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
     return {
       success: false, tweakId: tweak.id,
-      error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao aplicar este ajuste.'
+      error: userCancelled
+        ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+        : `Falha ao aplicar este ajuste: ${error.message}`
     };
   }
 }
 
 /**
- * Fluxo completo: Restore (do snapshot) → Verify → Clean.
- * Recusa reverter se não existir snapshot — não "adivinha" um padrão.
+ * Fluxo: Restore (do snapshot, injetando $snapshotExists/$snapshotValue) →
+ * Verify → Clean. Recusa reverter sem snapshot salvo.
  */
 async function revertWithSnapshot(tweak) {
   const snapshot = getSnapshot(tweak.id);
@@ -375,23 +402,30 @@ async function revertWithSnapshot(tweak) {
     };
   }
 
-  const { registry } = tweak;
+  const { exists, value } = snapshot.previousState;
+
+  const injectedVars = `
+$snapshotExists = ${exists ? '$true' : '$false'}
+$snapshotValue = ${formatPsLiteral(value)}
+`.trim();
+
+  const restoreScript = `${injectedVars}\n${tweak.restore.script}`;
 
   try {
-    log.info(`[snapshot-engine] RESTORE "${tweak.id}" para o estado original...`, snapshot.previousState);
-    await runCommandSmart(buildRegistryRestoreScript(registry, snapshot.previousState), tweak.requiresAdmin, 15000);
+    log.info(`[snapshot-engine] RESTORE "${tweak.id}"...`, snapshot.previousState);
+    await runCommandSmart(restoreScript, tweak.requiresAdmin, 15000);
 
     log.info(`[snapshot-engine] VERIFY (restore) "${tweak.id}"...`);
-    const after = await readRegistryState(registry);
+    const after = await runScriptAndParse(tweak.verify.script);
 
-    const expectedExists = snapshot.previousState.propertyExists;
-    const restored = expectedExists
-      ? (after.propertyExists && Number(after.value) === Number(snapshot.previousState.value))
-      : !after.propertyExists;
+    const restored = (!!after.exists === !!exists) && (!exists || String(after.value) === String(value));
 
     if (!restored) {
       log.error(`[snapshot-engine] Falha ao verificar restauração de "${tweak.id}".`, after);
-      return { success: false, tweakId: tweak.id, error: 'Não foi possível confirmar a restauração do valor original. O snapshot foi mantido.' };
+      return {
+        success: false, tweakId: tweak.id,
+        error: 'Não foi possível confirmar a restauração do valor original. O snapshot foi mantido.'
+      };
     }
 
     removeSnapshot(tweak.id);
@@ -403,7 +437,9 @@ async function revertWithSnapshot(tweak) {
     const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
     return {
       success: false, tweakId: tweak.id,
-      error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao restaurar este ajuste.'
+      error: userCancelled
+        ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+        : `Falha ao restaurar este ajuste: ${error.message}`
     };
   }
 }
@@ -416,13 +452,10 @@ function registerTweaksHandlers() {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
 
-    // Motor novo: só no Windows, já que registry não existe em outros SOs.
     if (tweak.engine === 'snapshot' && os.platform() === 'win32') {
       return applyWithSnapshot(tweak);
     }
 
-    // Caminho legado (inalterado) — cobre todos os outros tweaks e o
-    // fallback simulado do próprio HAGS fora do Windows.
     const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
     try {
       await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
@@ -471,12 +504,6 @@ function registerTweaksHandlers() {
   }));
 }
 
-/**
- * Reversão em lote (já existente da rodada anterior). Tweaks com motor de
- * snapshot são revertidos individualmente ANTES do lote legado, cada um
- * com seu próprio Verify — não entram no script elevado agrupado, porque
- * precisam ler o snapshot específico de cada um, não apenas "desfazer cego".
- */
 async function revertAllTweaks() {
   const platform = os.platform();
   const appliedState = store.get('tweaksApplied', {});
@@ -493,14 +520,12 @@ async function revertAllTweaks() {
   const legacyUserTweaks = activeTweaks.filter((t) => !(t.engine === 'snapshot' && platform === 'win32') && !t.requiresAdmin);
   const legacyAdminTweaks = activeTweaks.filter((t) => !(t.engine === 'snapshot' && platform === 'win32') && t.requiresAdmin);
 
-  // Tweaks com snapshot: revertidos um por um, com seu próprio Verify.
   for (const tweak of snapshotTweaks) {
     const result = await revertWithSnapshot(tweak);
     if (result.success) reverted.push(tweak.id);
     else failed.push({ id: tweak.id, error: result.error });
   }
 
-  // Legado sem admin: revertido direto, sem UAC.
   for (const tweak of legacyUserTweaks) {
     const cmd = platform === 'win32' ? tweak.commands.win.revert : tweak.commands.linux.revert;
     try {
@@ -512,7 +537,6 @@ async function revertAllTweaks() {
     }
   }
 
-  // Legado com admin: agrupados em um único script elevado (um só UAC).
   if (legacyAdminTweaks.length > 0) {
     if (platform !== 'win32') {
       for (const tweak of legacyAdminTweaks) {

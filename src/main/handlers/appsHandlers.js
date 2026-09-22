@@ -31,9 +31,13 @@ const BLOATWARE_CATALOG = [
 async function listInstalledBloatware() {
   if (os.platform() !== 'win32') return [];
 
-  const script = `Get-AppxPackage | Select-Object Name, PackageFullName, Publisher | ConvertTo-Json -Compress`;
-  const { stdout } = await runShellCommand(script, 20000);
+  const script = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+Get-AppxPackage | Select-Object Name, PackageFullName, Publisher | ConvertTo-Json -Compress
+  `.trim();
 
+  const { stdout } = await runShellCommand(script, 20000);
   const trimmed = (stdout || '').trim();
   if (!trimmed) return [];
 
@@ -69,18 +73,35 @@ function translateUninstallError(rawError) {
   return rawError;
 }
 
+/**
+ * Desinstala vários pacotes de uma vez, com UM único prompt de UAC.
+ *
+ * Correção do erro 0x80070002: antes de chamar Remove-AppxPackage, cada
+ * pacote é checado com Get-AppxPackage. Se não existir mais (já removido
+ * pelo próprio Windows, ou nunca instalado para o usuário atual), é
+ * marcado como "sucesso ignorado" em vez de lançar exceção fatal — esse
+ * erro específico do Windows significa exatamente "não há nada para
+ * remover", não uma falha real da operação.
+ */
 async function uninstallBatch(packageFullNames) {
   const escapedList = packageFullNames.map((pkg) => `'${pkg.replace(/'/g, "''")}'`).join(',');
 
   const scriptBody = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $results = @()
 $packages = @(${escapedList})
 foreach ($pkg in $packages) {
-  try {
-    Remove-AppxPackage -Package $pkg -AllUsers -ErrorAction Stop
-    $results += [PSCustomObject]@{ Package = $pkg; Success = $true }
-  } catch {
-    $results += [PSCustomObject]@{ Package = $pkg; Success = $false; Error = $_.Exception.Message }
+  $existing = Get-AppxPackage -AllUsers | Where-Object { $_.PackageFullName -eq $pkg }
+  if ($null -eq $existing) {
+    $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $true }
+  } else {
+    try {
+      Remove-AppxPackage -Package $pkg -AllUsers -ErrorAction Stop
+      $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $false }
+    } catch {
+      $results += [PSCustomObject]@{ Package = $pkg; Success = $false; Skipped = $false; Error = $_.Exception.Message }
+    }
   }
 }
 $__resultJson = $results | ConvertTo-Json -Compress
@@ -120,10 +141,13 @@ function registerAppsHandlers() {
     try {
       const results = await uninstallBatch(packageFullNames);
       const removedIds = results.filter((r) => r.Success).map((r) => r.Package);
+      const skippedIds = results.filter((r) => r.Success && r.Skipped).map((r) => r.Package);
       const failed = results.filter((r) => !r.Success);
+
       return {
         success: failed.length === 0,
         removedIds,
+        skippedIds,
         failed: failed.map((f) => ({ id: f.Package, error: translateUninstallError(f.Error) }))
       };
     } catch (error) {
