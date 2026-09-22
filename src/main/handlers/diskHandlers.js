@@ -1,6 +1,7 @@
 const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runCommandSmart } = require('../utils/shell');
+const { withLicense } = require('../utils/licenseGuard');
 
 function mapMediaType(raw) {
   const value = String(raw).toUpperCase();
@@ -29,19 +30,13 @@ $result | ConvertTo-Json -Compress
 
   const parsed = JSON.parse(trimmed);
   const list = Array.isArray(parsed) ? parsed : [parsed];
-
-  return list.map((v) => ({
-    driveLetter: v.DriveLetter,
-    type: mapMediaType(v.MediaType)
-  }));
+  return list.map((v) => ({ driveLetter: v.DriveLetter, type: mapMediaType(v.MediaType) }));
 }
 
 async function optimizeDrive(driveLetter, type) {
   const script = type === 'SSD'
     ? `Optimize-Volume -DriveLetter ${driveLetter} -ReTrim`
     : `Optimize-Volume -DriveLetter ${driveLetter} -Defrag`;
-
-  // Timeout alto: desfragmentação de HDD pode levar vários minutos.
   await runCommandSmart(script, true, 600000);
 }
 
@@ -56,10 +51,8 @@ function registerDiskHandlers() {
     }
   });
 
-  ipcMain.handle('disk:optimize', async (_event, { driveLetter, type }) => {
-    if (!driveLetter) {
-      return { success: false, error: 'Unidade não informada.' };
-    }
+  ipcMain.handle('disk:optimize', withLicense(async (_event, { driveLetter, type }) => {
+    if (!driveLetter) return { success: false, error: 'Unidade não informada.' };
     try {
       await optimizeDrive(driveLetter, type);
       return { success: true };
@@ -73,7 +66,7 @@ function registerDiskHandlers() {
           : 'Falha ao otimizar a unidade.'
       };
     }
-  });
+  }));
 }
 
 module.exports = { registerDiskHandlers };

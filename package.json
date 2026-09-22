@@ -1,6 +1,6 @@
 {
   "name": "c-optimizer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "C-Optimizer - Otimização e Manutenção de Sistema Windows",
   "main": "src/main/main.js",
   "author": "Caio",
@@ -34,47 +34,52 @@
     "react-dom": "^18.3.1",
     "systeminformation": "^5.23.5"
   },
-"build": {
-  "appId": "com.coptimizer.app",
-  "productName": "C-Optimizer",
-  "copyright": "Copyright © 2026 C-Optimizer",
-  "asar": true,
-  "files": [
-    "dist/**/*",
-    "src/main/**/*",
-    "src/preload/**/*",
-    "package.json"
-  ],
-  "extraMetadata": {
-    "main": "src/main/main.js"
-  },
-  "directories": {
-    "output": "release",
-    "buildResources": "build"
-  },
-  "publish": {
-    "provider": "github",
-    "owner": "c-optimizer",
-    "repo": "c-optimizer"
-  },
-  "win": {
-    "target": [
-      { "target": "nsis", "arch": ["x64"] }
+  "build": {
+    "appId": "com.coptimizer.app",
+    "productName": "C-Optimizer",
+    "copyright": "Copyright © 2026 C-Optimizer",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "src/preload/**/*",
+      "package.json"
     ],
-    "icon": "build/icon.ico"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "C-Optimizer",
-    "artifactName": "C-Optimizer-Setup-${version}.${ext}"
-  }
-},
-    "linux": {
-      "target": "AppImage",
+    "extraMetadata": {
+      "main": "src/main/main.js"
+    },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "c-optimizer",
+      "repo": "c-optimizer",
+      "releaseType": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "C-Optimizer",
+      "artifactName": "C-Optimizer-Setup-${version}.${ext}"
     }
+  },
+  "linux": {
+    "target": "AppImage",
+    "icon": "build/icon.ico"
   }
-
+}

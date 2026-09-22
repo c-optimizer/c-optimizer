@@ -2,10 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { KeyRound, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
-/**
- * Formata o texto digitado inserindo hífens automaticamente a cada 4
- * caracteres, no padrão COPT-XXXX-XXXX-YYYY, enquanto o usuário digita.
- */
 function autoFormatInput(value) {
   const cleaned = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const groups = [];
@@ -20,7 +16,7 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleString();
 }
 
-function AuthView() {
+function AuthView({ onAuthenticated = () => {}, onLogout = () => {} }) {
   const { t } = useLanguage();
   const [licenseKey, setLicenseKey] = useState('');
   const [validating, setValidating] = useState(false);
@@ -36,6 +32,7 @@ function AuthView() {
         const license = await window.electronAPI.invoke('auth:get-stored-license');
         if (isMounted && license?.key) {
           setStoredLicense(license);
+          onAuthenticated();
         }
       } catch (err) {
         console.error('Erro ao verificar licença salva:', err);
@@ -45,9 +42,8 @@ function AuthView() {
     }
 
     loadStoredLicense();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInputChange = (e) => {
@@ -67,7 +63,9 @@ function AuthView() {
     try {
       const result = await window.electronAPI.invoke('auth:validate-license', licenseKey);
       if (result.success) {
-        setStoredLicense({ key: result.key, validatedAt: new Date().toISOString() });
+        const license = { key: result.key, validatedAt: new Date().toISOString() };
+        setStoredLicense(license);
+        onAuthenticated();
       } else {
         setError(result.error);
       }
@@ -83,6 +81,7 @@ function AuthView() {
       await window.electronAPI.invoke('auth:logout');
       setStoredLicense(null);
       setLicenseKey('');
+      onLogout();
     } catch (err) {
       console.error('Erro ao sair da licença:', err);
     }
@@ -104,11 +103,7 @@ function AuthView() {
             storedLicense ? 'bg-c-primary/10 border-c-primary/30' : 'bg-c-secondary/10 border-c-secondary/30'
           }`}
         >
-          {storedLicense ? (
-            <ShieldCheck size={28} className="text-c-primary" />
-          ) : (
-            <KeyRound size={28} className="text-c-secondary" />
-          )}
+          {storedLicense ? <ShieldCheck size={28} className="text-c-primary" /> : <KeyRound size={28} className="text-c-secondary" />}
         </div>
 
         <div className="text-center">
@@ -150,7 +145,7 @@ function AuthView() {
                 value={licenseKey}
                 onChange={handleInputChange}
                 placeholder={t('auth.licensePlaceholder')}
-                maxLength={19} // COPT-XXXX-XXXX-YYYY = 19 caracteres com hífens
+                maxLength={19}
                 className={`w-full bg-c-bg border rounded-lg px-3 py-2.5 text-sm text-slate-200 font-mono tracking-wider placeholder:text-slate-600 placeholder:font-sans focus:outline-none
                   ${error ? 'border-c-danger focus:border-c-danger' : 'border-c-border focus:border-c-primary/60'}
                 `}

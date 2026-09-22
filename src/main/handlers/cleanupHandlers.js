@@ -1,32 +1,11 @@
 const { ipcMain } = require('electron');
-const { exec } = require('child_process');
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const util = require('util');
+const { runShellCommand, runCommandSmart } = require('../utils/shell');
+const { withLicense } = require('../utils/licenseGuard');
 const store = require('../store');
 
-const execAsync = util.promisify(exec);
-
-function encodePowerShellCommand(command) {
-  return Buffer.from(command, 'utf16le').toString('base64');
-}
-
-async function runShellCommand(command) {
-  const platform = os.platform();
-  if (platform === 'win32') {
-    const encoded = encodePowerShellCommand(command);
-    const psCommand = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
-    return execAsync(psCommand, { windowsHide: true, timeout: 30000 });
-  }
-  return execAsync(command, { shell: '/bin/bash', timeout: 30000 });
-}
-
-/**
- * Apaga recursivamente o CONTEÚDO de uma pasta (não a pasta em si),
- * ignorando arquivos individuais que falharem (em uso, sem permissão, etc.)
- * e somando quantos bytes foram efetivamente liberados.
- */
 async function clearDirectoryContents(dirPath) {
   let freedBytes = 0;
   let skippedCount = 0;
@@ -34,8 +13,7 @@ async function clearDirectoryContents(dirPath) {
   let entries;
   try {
     entries = await fs.readdir(dirPath, { withFileTypes: true });
-  } catch (error) {
-    // Pasta não existe ou sem acesso — não é um erro fatal para a limpeza geral
+  } catch {
     return { freedBytes: 0, skippedCount: 0 };
   }
 
@@ -44,7 +22,6 @@ async function clearDirectoryContents(dirPath) {
     try {
       const stat = await fs.stat(fullPath);
       if (entry.isDirectory()) {
-        // Soma o tamanho de dentro da subpasta antes de remover
         const sub = await clearDirectoryContents(fullPath);
         freedBytes += sub.freedBytes;
         skippedCount += sub.skippedCount;
@@ -53,8 +30,7 @@ async function clearDirectoryContents(dirPath) {
         freedBytes += stat.size;
         await fs.unlink(fullPath);
       }
-    } catch (error) {
-      // Arquivo em uso, sem permissão, etc. — pula e continua
+    } catch {
       skippedCount += 1;
     }
   }
@@ -62,9 +38,6 @@ async function clearDirectoryContents(dirPath) {
   return { freedBytes, skippedCount };
 }
 
-/**
- * Definição dos alvos de limpeza. Cada `run()` retorna { freedBytes, skippedCount }.
- */
 const CLEANUP_TARGETS = {
   temp: {
     id: 'temp',
@@ -77,24 +50,21 @@ const CLEANUP_TARGETS = {
     id: 'prefetch',
     label: 'Prefetch',
     async run() {
-      const platform = os.platform();
-      if (platform !== 'win32') {
-        return { freedBytes: 0, skippedCount: 0 };
-      }
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
       const prefetchPath = path.join(process.env.WINDIR || 'C:\\Windows', 'Prefetch');
-      return clearDirectoryContents(prefetchPath);
+      // Requer admin de verdade (arquivos do sistema) — antes usávamos fs
+      // direto, que falhava silenciosamente para usuários não-admin.
+      const script = `Remove-Item -Path '${prefetchPath}\\*.pf' -Force -ErrorAction SilentlyContinue`;
+      await runCommandSmart(script, true, 30000);
+      return { freedBytes: 0, skippedCount: 0, unmeasured: true };
     }
   },
   'recycle-bin': {
     id: 'recycle-bin',
     label: 'Lixeira',
     async run() {
-      const platform = os.platform();
-      if (platform !== 'win32') {
-        return { freedBytes: 0, skippedCount: 0 };
-      }
-      // Clear-RecycleBin não informa bytes liberados; estimamos como "sucesso" sem métrica exata
-      await runShellCommand(`Clear-RecycleBin -Force -ErrorAction SilentlyContinue`);
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
+      await runShellCommand(`Clear-RecycleBin -Force -ErrorAction SilentlyContinue`, 20000);
       return { freedBytes: 0, skippedCount: 0, unmeasured: true };
     }
   },
@@ -102,18 +72,17 @@ const CLEANUP_TARGETS = {
     id: 'wu-cache',
     label: 'Cache do Windows Update',
     async run() {
-      const platform = os.platform();
-      if (platform !== 'win32') {
-        return { freedBytes: 0, skippedCount: 0 };
-      }
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
       const wuPath = path.join(process.env.WINDIR || 'C:\\Windows', 'SoftwareDistribution', 'Download');
-
-      // Para o serviço antes de limpar (arquivos ficam travados enquanto ele roda)
-      await runShellCommand(`Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue`).catch(() => {});
-      const result = await clearDirectoryContents(wuPath);
-      await runShellCommand(`Start-Service -Name wuauserv -ErrorAction SilentlyContinue`).catch(() => {});
-
-      return result;
+      // Stop/clear/start em UM ÚNICO script elevado — evita 3 prompts de UAC
+      // e corrige o bug anterior de stop/start rodarem sem privilégio.
+      const script = `
+Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+Remove-Item -Path '${wuPath}\\*' -Recurse -Force -ErrorAction SilentlyContinue
+Start-Service -Name wuauserv -ErrorAction SilentlyContinue
+      `.trim();
+      await runCommandSmart(script, true, 60000);
+      return { freedBytes: 0, skippedCount: 0, unmeasured: true };
     }
   }
 };
@@ -128,8 +97,6 @@ function registerCleanupHandlers() {
   });
 
   ipcMain.handle('cleanup:scan', async () => {
-    // Scan "leve": apenas estima tamanho do %temp% sem apagar nada,
-    // usado se a UI quiser mostrar tamanho estimado antes de confirmar.
     let tempSize = 0;
     try {
       const entries = await fs.readdir(os.tmpdir());
@@ -137,17 +104,13 @@ function registerCleanupHandlers() {
         try {
           const stat = await fs.stat(path.join(os.tmpdir(), entry));
           tempSize += stat.size;
-        } catch {
-          // ignora entradas inacessíveis
-        }
+        } catch { /* ignora */ }
       }
-    } catch {
-      // %temp% inacessível — mantém tempSize em 0
-    }
+    } catch { /* %temp% inacessível */ }
     return { estimatedBytes: tempSize };
   });
 
-  ipcMain.handle('cleanup:execute', async (_event, targetIds) => {
+  ipcMain.handle('cleanup:execute', withLicense(async (_event, targetIds) => {
     if (!Array.isArray(targetIds) || targetIds.length === 0) {
       return { success: false, error: 'Nenhum alvo de limpeza selecionado.' };
     }
@@ -163,7 +126,6 @@ function registerCleanupHandlers() {
         hadError = true;
         continue;
       }
-
       try {
         const { freedBytes, skippedCount, unmeasured } = await target.run();
         totalFreedBytes += freedBytes || 0;
@@ -178,15 +140,8 @@ function registerCleanupHandlers() {
     const now = new Date().toISOString();
     store.set('lastCleanupAt', now);
 
-    return {
-      success: !hadError,
-      results,
-      totalFreedBytes,
-      lastCleanupAt: now
-    };
-  });
+    return { success: !hadError, results, totalFreedBytes, lastCleanupAt: now };
+  }));
 }
 
-module.exports = {
-  registerCleanupHandlers
-};
+module.exports = { registerCleanupHandlers };

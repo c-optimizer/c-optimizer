@@ -2,6 +2,7 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const store = require('../store');
 const { runCommandSmart } = require('../utils/shell');
+const { withLicense } = require('../utils/licenseGuard');
 
 const TWEAKS_CATALOG = [
   {
@@ -47,9 +48,6 @@ const TWEAKS_CATALOG = [
     }
   },
   {
-    // MESCLADO: já cobria NetworkThrottlingIndex/SystemResponsiveness (pedido do Kanban).
-    // Adicionamos agora o perfil "Games" (GPU Priority=8, Priority=6), que é a parte
-    // que faltava do item "Timer Resolution / System Responsiveness" do backlog.
     id: 'network-throttling',
     category: 'Rede',
     title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
@@ -139,8 +137,6 @@ Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "Medium" -E
     }
   },
   {
-    // CORRIGIDO: agora força a atualização imediata da sessão via
-    // SystemParametersInfo (SPI_SETMOUSE), sem precisar de logoff.
     id: 'disable-mouse-accel',
     category: 'Gaming',
     title: 'Desativar Aceleração do Mouse',
@@ -227,11 +223,23 @@ function setTweakState(tweakId, enabled) {
   store.set('tweaksApplied', appliedState);
 }
 
+/**
+ * Calcula o score real de otimização: proporção de tweaks ativos em
+ * relação ao total do catálogo. Usado pelo Dashboard (via systemHandlers).
+ */
+function computeOptimizationScore() {
+  const appliedState = store.get('tweaksApplied', {});
+  const total = TWEAKS_CATALOG.length;
+  const activeCount = TWEAKS_CATALOG.filter((t) => appliedState[t.id]).length;
+  const score = total > 0 ? Math.round((activeCount / total) * 100) : 0;
+  return { score, activeCount, total };
+}
+
 function registerTweaksHandlers() {
   ipcMain.handle('tweaks:get-catalog', async () => getPublicCatalog());
   ipcMain.handle('tweaks:get-applied-state', async () => store.get('tweaksApplied', {}));
 
-  ipcMain.handle('tweaks:apply', async (_event, tweakId) => {
+  ipcMain.handle('tweaks:apply', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
     const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
@@ -247,9 +255,9 @@ function registerTweaksHandlers() {
         error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao aplicar este ajuste.'
       };
     }
-  });
+  }));
 
-  ipcMain.handle('tweaks:revert', async (_event, tweakId) => {
+  ipcMain.handle('tweaks:revert', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
     const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
@@ -265,7 +273,7 @@ function registerTweaksHandlers() {
         error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao reverter este ajuste.'
       };
     }
-  });
+  }));
 }
 
-module.exports = { registerTweaksHandlers };
+module.exports = { registerTweaksHandlers, computeOptimizationScore };

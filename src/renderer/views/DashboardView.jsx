@@ -14,6 +14,7 @@ function DashboardView() {
   const { t } = useLanguage();
   const [stats, setStats] = useState(EMPTY_STATS);
   const [staticInfo, setStaticInfo] = useState(null);
+  const [optimization, setOptimization] = useState({ score: 0, activeCount: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,29 +22,28 @@ function DashboardView() {
 
     async function loadInitialData() {
       try {
-        const [initialStats, info] = await Promise.all([
+        const [initialStats, info, optStatus] = await Promise.all([
           window.electronAPI.invoke('system:get-stats'),
-          window.electronAPI.invoke('system:get-info')
+          window.electronAPI.invoke('system:get-info'),
+          window.electronAPI.invoke('system:get-optimization-status')
         ]);
 
         if (isMounted) {
           if (!initialStats.error) setStats(initialStats);
           if (!info.error) setStaticInfo(info);
+          setOptimization(optStatus);
           setLoading(false);
         }
       } catch (error) {
-        console.error('Erro ao carregar telemetria inicial:', error);
+        console.error('Erro ao carregar dados iniciais:', error);
         if (isMounted) setLoading(false);
       }
     }
 
     loadInitialData();
 
-    // Escuta as atualizações contínuas enviadas pelo Main Process
     const unsubscribe = window.electronAPI.on('system:stats-update', (updatedStats) => {
-      if (isMounted) {
-        setStats(updatedStats);
-      }
+      if (isMounted) setStats(updatedStats);
     });
 
     return () => {
@@ -73,42 +73,10 @@ function DashboardView() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          icon={Cpu}
-          label={t('dashboard.cpu')}
-          value={stats.cpu.percent}
-          unit="%"
-          percent={stats.cpu.percent}
-          variant="primary"
-          extra={cpuLabel}
-        />
-        <StatCard
-          icon={CircuitBoard}
-          label={t('dashboard.gpu')}
-          value={stats.gpu.percent}
-          unit="%"
-          percent={stats.gpu.percent}
-          variant="secondary"
-          extra={gpuLabel}
-        />
-        <StatCard
-          icon={MemoryStick}
-          label={t('dashboard.ram')}
-          value={stats.ram.percent}
-          unit="%"
-          percent={stats.ram.percent}
-          variant="primary"
-          extra={ramExtra}
-        />
-        <StatCard
-          icon={HardDrive}
-          label={t('dashboard.storage')}
-          value={stats.storage.percent}
-          unit="%"
-          percent={stats.storage.percent}
-          variant="danger"
-          extra={storageExtra}
-        />
+        <StatCard icon={Cpu} label={t('dashboard.cpu')} value={stats.cpu.percent} unit="%" percent={stats.cpu.percent} variant="primary" extra={cpuLabel} />
+        <StatCard icon={CircuitBoard} label={t('dashboard.gpu')} value={stats.gpu.percent} unit="%" percent={stats.gpu.percent} variant="secondary" extra={gpuLabel} />
+        <StatCard icon={MemoryStick} label={t('dashboard.ram')} value={stats.ram.percent} unit="%" percent={stats.ram.percent} variant="primary" extra={ramExtra} />
+        <StatCard icon={HardDrive} label={t('dashboard.storage')} value={stats.storage.percent} unit="%" percent={stats.storage.percent} variant="danger" extra={storageExtra} />
       </div>
 
       <div className="bg-c-surface border border-c-border rounded-xl p-4 flex items-center gap-3">
@@ -125,13 +93,18 @@ function DashboardView() {
         <div className="lg:col-span-2 bg-c-surface border border-c-border rounded-xl p-6 flex flex-col justify-between">
           <div>
             <h2 className="text-slate-100 font-semibold">{t('dashboard.statusCardTitle')}</h2>
-            <p className="text-slate-500 text-sm mt-1">{t('dashboard.statusCardDesc')}</p>
+            <p className="text-slate-500 text-sm mt-1">
+              {optimization.activeCount} de {optimization.total} otimizações ativas
+            </p>
           </div>
           <div className="flex items-center gap-2 mt-6">
             <div className="w-full h-2 bg-c-border rounded-full overflow-hidden">
-              <div className="h-full bg-c-primary rounded-full" style={{ width: '76%' }} />
+              <div
+                className="h-full bg-c-primary rounded-full transition-all duration-500"
+                style={{ width: `${optimization.score}%` }}
+              />
             </div>
-            <span className="text-c-primary text-sm font-bold shrink-0">76%</span>
+            <span className="text-c-primary text-sm font-bold shrink-0">{optimization.score}%</span>
           </div>
         </div>
 

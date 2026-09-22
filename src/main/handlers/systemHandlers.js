@@ -1,6 +1,7 @@
 const { ipcMain, BrowserWindow, shell } = require('electron');
 const si = require('systeminformation');
 const { isRunningAsAdmin, runShellCommand } = require('../utils/shell');
+const { computeOptimizationScore } = require('./tweaksHandlers');
 const os = require('os');
 
 const STATS_INTERVAL_MS = 2000;
@@ -45,11 +46,6 @@ async function collectStaticInfo() {
   };
 }
 
-/**
- * Compara velocidade configurada vs nominal da RAM (estimativa de XMP/DOCP)
- * e detecta modelo/fabricante da placa-mãe via WMI, para montar o link de
- * busca no YouTube ("como ativar XMP na BIOS <fabricante> <modelo>").
- */
 async function getMemoryProfile() {
   if (os.platform() !== 'win32') return { supported: false };
 
@@ -69,7 +65,6 @@ $board = Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product
   const rated = sticks.map((s) => Number(s.Speed) || 0);
   const maxConfigured = Math.max(...configured);
   const maxRated = Math.max(...rated);
-
   const board = Array.isArray(parsed.Board) ? parsed.Board[0] : parsed.Board;
 
   return {
@@ -98,14 +93,22 @@ function registerSystemHandlers() {
     try { return await collectStaticInfo(); } catch (e) { console.error(e); return { error: e.message }; }
   });
 
-  ipcMain.handle('system:get-optimization-status', async () => ({ score: 76, lastCheck: new Date().toISOString() }));
+  // Score REAL: proporção de tweaks ativos em relação ao catálogo total,
+  // calculado em tweaksHandlers.js a partir do estado persistido.
+  ipcMain.handle('system:get-optimization-status', async () => {
+    try {
+      const { score, activeCount, total } = computeOptimizationScore();
+      return { score, activeCount, total, lastCheck: new Date().toISOString() };
+    } catch (error) {
+      console.error('[system:get-optimization-status] Erro:', error);
+      return { score: 0, activeCount: 0, total: 0, lastCheck: new Date().toISOString(), error: error.message };
+    }
+  });
 
   ipcMain.handle('system:get-memory-profile', async () => {
     try { return await getMemoryProfile(); } catch (e) { console.error(e); return { supported: false, error: e.message }; }
   });
 
-  // Abre um link externo no navegador padrão do usuário. Restrito a
-  // youtube.com para evitar uso indevido desse canal para abrir qualquer URL.
   ipcMain.handle('system:open-external', async (_event, url) => {
     try {
       const parsed = new URL(url);

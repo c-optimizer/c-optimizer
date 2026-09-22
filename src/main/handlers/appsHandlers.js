@@ -1,6 +1,7 @@
 const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runElevatedScriptWithOutput, isRunningAsAdmin } = require('../utils/shell');
+const { withLicense } = require('../utils/licenseGuard');
 
 const BLOATWARE_CATALOG = [
   { match: 'Microsoft.XboxGamingOverlay', label: 'Xbox Game Bar' },
@@ -46,25 +47,31 @@ async function listInstalledBloatware() {
       const pkg = installedByName.get(entry.match);
       const publisherRaw = pkg.Publisher || '';
       const publisherClean = publisherRaw.split(',')[0].replace('CN=', '').trim();
-
-      return {
-        id: pkg.PackageFullName,
-        name: entry.label,
-        publisher: publisherClean || 'Microsoft Corporation'
-      };
+      return { id: pkg.PackageFullName, name: entry.label, publisher: publisherClean || 'Microsoft Corporation' };
     });
 }
 
-/**
- * Desinstala vários pacotes de uma vez, com UM único prompt de UAC para o lote,
- * quando o app não estiver rodando elevado.
- */
-async function uninstallBatch(packageFullNames) {
-  const escapedList = packageFullNames
-    .map((pkg) => `'${pkg.replace(/'/g, "''")}'`)
-    .join(',');
+function translateUninstallError(rawError) {
+  if (!rawError) return 'Motivo não informado pelo Windows.';
+  const msg = rawError.toLowerCase();
+  if (msg.includes('0x80073cf0') || msg.includes('cannot be uninstalled')) {
+    return 'Este é um componente protegido do Windows e não pode ser removido por este método.';
+  }
+  if (msg.includes('0x80073d02') || msg.includes('in use')) {
+    return 'O aplicativo está em uso no momento. Feche-o e tente novamente.';
+  }
+  if (msg.includes('dependency') || msg.includes('depend')) {
+    return 'Outros componentes do sistema dependem deste aplicativo.';
+  }
+  if (msg.includes('access is denied') || msg.includes('acesso negado')) {
+    return 'Permissão negada pelo Windows para remover este componente.';
+  }
+  return rawError;
+}
 
-  // Script que desinstala cada pacote e acumula o resultado individual
+async function uninstallBatch(packageFullNames) {
+  const escapedList = packageFullNames.map((pkg) => `'${pkg.replace(/'/g, "''")}'`).join(',');
+
   const scriptBody = `
 $results = @()
 $packages = @(${escapedList})
@@ -80,7 +87,6 @@ $__resultJson = $results | ConvertTo-Json -Compress
 `.trim();
 
   if (isRunningAsAdmin()) {
-    // Já elevado: roda direto via runShellCommand, imprime o JSON no stdout
     const inlineScript = scriptBody.replace(
       '$__resultJson = $results | ConvertTo-Json -Compress',
       '$results | ConvertTo-Json -Compress'
@@ -90,34 +96,8 @@ $__resultJson = $results | ConvertTo-Json -Compress
     return Array.isArray(parsed) ? parsed : [parsed];
   }
 
-  // Não elevado: um único UAC para o lote inteiro, resultado via arquivo temporário
   const result = await runElevatedScriptWithOutput(scriptBody, 60000);
   return Array.isArray(result) ? result : [result];
-}
-
-/**
- * Traduz mensagens de erro técnicas do Windows (Remove-AppxPackage) para
- * algo compreensível pelo usuário final, em vez do HRESULT bruto.
- */
-function translateUninstallError(rawError) {
-  if (!rawError) return 'Motivo não informado pelo Windows.';
-
-  const msg = rawError.toLowerCase();
-
-  if (msg.includes('0x80073cf0') || msg.includes('cannot be uninstalled')) {
-    return 'Este é um componente protegido do Windows e não pode ser removido por este método.';
-  }
-  if (msg.includes('0x80073d02') || msg.includes('in use')) {
-    return 'O aplicativo está em uso no momento. Feche-o e tente novamente.';
-  }
-  if (msg.includes('dependency') || msg.includes('depend')) {
-    return 'Outros componentes do sistema dependem deste aplicativo.';
-  }
-  if (msg.includes('access is denied') || msg.includes('acesso negado')) {
-    return 'Permissão negada pelo Windows para remover este componente.';
-  }
-
-  return rawError; // fallback: mostra a mensagem original se não reconhecida
 }
 
 function registerAppsHandlers() {
@@ -131,10 +111,8 @@ function registerAppsHandlers() {
     }
   });
 
-  ipcMain.handle('apps:uninstall-batch', async (_event, packageFullNames) => {
-    if (os.platform() !== 'win32') {
-      return { success: false, error: 'Disponível apenas no Windows.' };
-    }
+  ipcMain.handle('apps:uninstall-batch', withLicense(async (_event, packageFullNames) => {
+    if (os.platform() !== 'win32') return { success: false, error: 'Disponível apenas no Windows.' };
     if (!Array.isArray(packageFullNames) || packageFullNames.length === 0) {
       return { success: false, error: 'Nenhum aplicativo selecionado.' };
     }
@@ -143,7 +121,6 @@ function registerAppsHandlers() {
       const results = await uninstallBatch(packageFullNames);
       const removedIds = results.filter((r) => r.Success).map((r) => r.Package);
       const failed = results.filter((r) => !r.Success);
-
       return {
         success: failed.length === 0,
         removedIds,
@@ -159,7 +136,7 @@ function registerAppsHandlers() {
           : 'Falha ao desinstalar os aplicativos selecionados.'
       };
     }
-  });
+  }));
 }
 
 module.exports = { registerAppsHandlers };

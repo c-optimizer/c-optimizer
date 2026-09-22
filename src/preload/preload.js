@@ -8,7 +8,7 @@ const validInvokeChannels = [
   'system:is-admin',
   'system:get-memory-profile',
   'system:open-external',
-  
+
   // Otimizações
   'tweaks:get-catalog',
   'tweaks:apply',
@@ -31,11 +31,14 @@ const validInvokeChannels = [
   'restore:create-point',
   'restore:enable-protection',
 
-  // Apps / Bloatware / Winget
+  // Apps / Bloatware
   'apps:list-installed',
   'apps:uninstall-batch',
-  'winget:install',
+
+  // Winget — instalação de softwares e runtimes
   'winget:check-installed',
+  'winget:get-catalog',
+  'winget:install',
 
   // Configurações
   'settings:get',
@@ -57,10 +60,10 @@ const validOnChannels = [
   'system:stats-update',
   'cleanup:progress',
   'tweaks:progress',
+  'winget:progress',
   'update:available',
   'update:progress',
-  'update:downloaded',
-  'winget:progress'
+  'update:downloaded'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
