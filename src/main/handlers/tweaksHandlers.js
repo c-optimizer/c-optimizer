@@ -17,20 +17,79 @@ const { saveSnapshot, getSnapshot, removeSnapshot } = require('../utils/snapshot
  *   primitivos).
  */
 const TWEAKS_CATALOG = [
-  {
-    id: 'gaming-priority',
-    category: 'Gaming',
-    title: 'Prioridade de CPU para Jogos',
-    description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 38`,
-        revert: `if (-not (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl")) { New-Item -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl" -Name "Win32PrioritySeparation" -Value 2`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
+  
+{
+  id: 'gaming-priority',
+  category: 'Gaming',
+  title: 'Prioridade de CPU para Jogos',
+  description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
+  risk: 'medium',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
+$name = "Win32PrioritySeparation"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
   },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "Win32PrioritySeparation" -PropertyType DWord -Value 38 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "Win32PrioritySeparation" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.Win32PrioritySeparation } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 38 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
+$name = "Win32PrioritySeparation"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
   {
     id: 'gpu-scheduling',
     category: 'GPU',
@@ -105,65 +164,342 @@ if ($snapshotExists -eq $true) {
     }
   },
   {
-    id: 'network-nagle',
-    category: 'Rede',
-    title: 'Desativar Algoritmo de Nagle',
-    description: 'Reduz a latência de rede desativando o agrupamento de pacotes TCP pequenos.',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `Get-ChildItem "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue }`,
-        revert: `Get-ChildItem "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" | ForEach-Object { Remove-ItemProperty -Path $_.PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue; Remove-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -ErrorAction SilentlyContinue }`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
+  id: 'network-nagle',
+  category: 'Rede',
+  title: 'Desativar Algoritmo de Nagle',
+  description: 'Reduz a latência de rede desativando o agrupamento de pacotes TCP pequenos em todas as interfaces de rede.',
+  risk: 'medium',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $basePath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces"
+  $interfaces = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
+  $list = @()
+  foreach ($iface in $interfaces) {
+    $guid = $iface.PSChildName
+    $item = Get-ItemProperty -Path $iface.PSPath -ErrorAction SilentlyContinue
+    $ackFreq = if ($null -ne $item -and $item.PSObject.Properties.Name -contains "TcpAckFrequency") { $item.TcpAckFrequency } else { $null }
+    $noDelay = if ($null -ne $item -and $item.PSObject.Properties.Name -contains "TCPNoDelay") { $item.TCPNoDelay } else { $null }
+    $list += [PSCustomObject]@{ Guid = $guid; TcpAckFrequency = $ackFreq; TCPNoDelay = $noDelay }
+  }
+  [PSCustomObject]@{ success = $true; exists = ($list.Count -gt 0); value = $list } | ConvertTo-Json -Compress -Depth 6
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
   },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $basePath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces"
+  $interfaces = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
+  foreach ($iface in $interfaces) {
+    New-ItemProperty -Path $iface.PSPath -Name "TcpAckFrequency" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty -Path $iface.PSPath -Name "TCPNoDelay" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue | Out-Null
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $basePath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces"
+  $interfaces = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
+  $list = @()
+  foreach ($iface in $interfaces) {
+    $guid = $iface.PSChildName
+    $item = Get-ItemProperty -Path $iface.PSPath -ErrorAction SilentlyContinue
+    $ackFreq = if ($null -ne $item -and $item.PSObject.Properties.Name -contains "TcpAckFrequency") { $item.TcpAckFrequency } else { $null }
+    $noDelay = if ($null -ne $item -and $item.PSObject.Properties.Name -contains "TCPNoDelay") { $item.TCPNoDelay } else { $null }
+    $list += [PSCustomObject]@{ Guid = $guid; TcpAckFrequency = $ackFreq; TCPNoDelay = $noDelay }
+  }
+  # Verifica se TODAS as interfaces existentes agora têm os valores aplicados
+  $allApplied = $true
+  foreach ($entry in $list) {
+    if ($entry.TcpAckFrequency -ne 1 -or $entry.TCPNoDelay -ne 1) { $allApplied = $false }
+  }
+  [PSCustomObject]@{ success = $true; exists = $allApplied; value = $list } | ConvertTo-Json -Compress -Depth 6
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    // 'exists: true' aqui significa "todas as interfaces presentes no momento
+    // do verify têm os valores aplicados" — não comparamos 'value' diretamente
+    // porque o NÚMERO de interfaces pode diferir entre o apply e o verify
+    // (ex: uma VPN conectou no meio do processo). expected.value é omitido
+    // de propósito; só 'exists' é checado.
+    expected: { exists: true }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $basePath = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces"
+
+  if ($snapshotExists -eq $true) {
+    foreach ($entry in $snapshotValue) {
+      $ifacePath = Join-Path $basePath $entry.Guid
+      if (-not (Test-Path $ifacePath)) { continue }
+
+      if ($null -eq $entry.TcpAckFrequency) {
+        Remove-ItemProperty -Path $ifacePath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue
+      } else {
+        New-ItemProperty -Path $ifacePath -Name "TcpAckFrequency" -PropertyType DWord -Value $entry.TcpAckFrequency -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+
+      if ($null -eq $entry.TCPNoDelay) {
+        Remove-ItemProperty -Path $ifacePath -Name "TCPNoDelay" -ErrorAction SilentlyContinue
+      } else {
+        New-ItemProperty -Path $ifacePath -Name "TCPNoDelay" -PropertyType DWord -Value $entry.TCPNoDelay -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+    }
+  } else {
+    # Nenhuma interface tinha essas propriedades antes — remove de todas as
+    # interfaces que existem agora (podem ser diferentes das originais).
+    $interfaces = Get-ChildItem -Path $basePath -ErrorAction SilentlyContinue
+    foreach ($iface in $interfaces) {
+      Remove-ItemProperty -Path $iface.PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $iface.PSPath -Name "TCPNoDelay" -ErrorAction SilentlyContinue
+    }
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
   {
-    id: 'network-throttling',
-    category: 'Rede',
-    title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
-    description: 'Remove o limite de rede em segundo plano e configura o perfil MMCSS de jogos com prioridade máxima de CPU/GPU.',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `
-$profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Force | Out-Null }
-Set-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -Value 0xffffffff
-Set-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -Value 0
-$gamesPath = "$profilePath\\Tasks\\Games"
-if (-not (Test-Path $gamesPath)) { New-Item -Path $gamesPath -Force | Out-Null }
-Set-ItemProperty -Path $gamesPath -Name "GPU Priority" -Value 8
-Set-ItemProperty -Path $gamesPath -Name "Priority" -Value 6
-Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "High"
-        `.trim(),
-        revert: `
-$profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
-Set-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -Value 10 -ErrorAction SilentlyContinue
-Set-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -Value 20 -ErrorAction SilentlyContinue
-$gamesPath = "$profilePath\\Tasks\\Games"
-Set-ItemProperty -Path $gamesPath -Name "GPU Priority" -Value 8 -ErrorAction SilentlyContinue
-Set-ItemProperty -Path $gamesPath -Name "Priority" -Value 2 -ErrorAction SilentlyContinue
-Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "Medium" -ErrorAction SilentlyContinue
-        `.trim()
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  id: 'network-throttling',
+  category: 'Rede',
+  title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
+  description: 'Remove o limite de rede em segundo plano e configura o perfil MMCSS de jogos com prioridade máxima de CPU/GPU.',
+  risk: 'medium',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+  $gamesPath = "$profilePath\\Tasks\\Games"
+
+  $result = [ordered]@{
+    NetworkThrottlingIndex = Read-RegValue $profilePath "NetworkThrottlingIndex"
+    SystemResponsiveness   = Read-RegValue $profilePath "SystemResponsiveness"
+    GpuPriority            = Read-RegValue $gamesPath "GPU Priority"
+    Priority               = Read-RegValue $gamesPath "Priority"
+    SchedulingCategory     = Read-RegValue $gamesPath "Scheduling Category"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+  if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Force | Out-Null }
+  New-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -PropertyType DWord -Value 0xffffffff -Force -ErrorAction Stop
+  New-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+
+  $gamesPath = "$profilePath\\Tasks\\Games"
+  if (-not (Test-Path $gamesPath)) { New-Item -Path $gamesPath -Force | Out-Null }
+  New-ItemProperty -Path $gamesPath -Name "GPU Priority" -PropertyType DWord -Value 8 -Force -ErrorAction Stop
+  New-ItemProperty -Path $gamesPath -Name "Priority" -PropertyType DWord -Value 6 -Force -ErrorAction Stop
+  New-ItemProperty -Path $gamesPath -Name "Scheduling Category" -PropertyType String -Value "High" -Force -ErrorAction Stop
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+  $gamesPath = "$profilePath\\Tasks\\Games"
+
+  $result = [ordered]@{
+    NetworkThrottlingIndex = Read-RegValue $profilePath "NetworkThrottlingIndex"
+    SystemResponsiveness   = Read-RegValue $profilePath "SystemResponsiveness"
+    GpuPriority            = Read-RegValue $gamesPath "GPU Priority"
+    Priority               = Read-RegValue $gamesPath "Priority"
+    SchedulingCategory     = Read-RegValue $gamesPath "Scheduling Category"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: {
+      exists: true,
+      value: {
+        NetworkThrottlingIndex: 4294967295,
+        SystemResponsiveness: 0,
+        GpuPriority: 8,
+        Priority: 6,
+        SchedulingCategory: 'High'
+      }
     }
   },
-  {
-    id: 'disable-telemetry',
-    category: 'Privacidade',
-    title: 'Desativar Telemetria do Windows',
-    description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft (política de registro).',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `if (-not (Test-Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection")) { New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0`,
-        revert: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 1 -ErrorAction SilentlyContinue`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Restore-RegValue($path, $name, $val, $propType) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
     }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType $propType -Value $val -Force -ErrorAction Stop
+  }
+}
+
+try {
+  $profilePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile"
+  $gamesPath = "$profilePath\\Tasks\\Games"
+
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue $profilePath "NetworkThrottlingIndex" $snapshotValue.NetworkThrottlingIndex "DWord"
+    Restore-RegValue $profilePath "SystemResponsiveness" $snapshotValue.SystemResponsiveness "DWord"
+    Restore-RegValue $gamesPath "GPU Priority" $snapshotValue.GpuPriority "DWord"
+    Restore-RegValue $gamesPath "Priority" $snapshotValue.Priority "DWord"
+    Restore-RegValue $gamesPath "Scheduling Category" $snapshotValue.SchedulingCategory "String"
+  } else {
+    Remove-ItemProperty -Path $profilePath -Name "NetworkThrottlingIndex" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $profilePath -Name "SystemResponsiveness" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $gamesPath -Name "GPU Priority" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $gamesPath -Name "Priority" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $gamesPath -Name "Scheduling Category" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
   },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+ {
+  id: 'disable-telemetry',
+  category: 'Privacidade',
+  title: 'Desativar Telemetria do Windows',
+  description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft (política de registro).',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+$name = "AllowTelemetry"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "AllowTelemetry" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "AllowTelemetry" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.AllowTelemetry } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
+$name = "AllowTelemetry"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
   {
     // NOVO — mecanismo diferente do tweak acima (que mexe em política de
     // registro): este para e desativa os serviços de telemetria em si.
@@ -293,33 +629,248 @@ try {
     }
   },
   {
-    id: 'power-plan',
-    category: 'Performance',
-    title: 'Plano de Energia Ultimate',
-    description: 'Habilita o plano de energia oculto de máxima performance do Windows.',
-    requiresAdmin: true,
-    commands: {
-      win: {
-        apply: `powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; powercfg -setactive e9a42b02-d5df-448d-aa00-03f14749eb61`,
-        revert: `powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  id: 'power-plan',
+  category: 'Performance',
+  title: 'Plano de Energia Ultimate',
+  description: 'Ativa o plano de energia de máxima performance do Windows (Ultimate Performance ou Alto Desempenho).',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $output = powercfg /getactivescheme
+  if ($output -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+    $guid = $matches[1]
+    [PSCustomObject]@{ success = $true; exists = $true; value = $guid } | ConvertTo-Json -Compress
+  } else {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+  }
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  # GUID público padrão do "Ultimate Performance" da Microsoft.
+  $ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+
+  # Verifica se já existe uma cópia duplicada do Ultimate Performance
+  # (evita duplicar o esquema a cada apply repetido).
+  $existingSchemes = powercfg /list
+  $alreadyDuplicated = $existingSchemes | Select-String -Pattern $ultimateGuid -Quiet
+
+  if (-not $alreadyDuplicated) {
+    $dupOutput = powercfg /duplicatescheme $ultimateGuid
+    if ($dupOutput -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+      $newGuid = $matches[1]
+    } else {
+      throw "Não foi possível duplicar o esquema Ultimate Performance."
+    }
+  } else {
+    $newGuid = $ultimateGuid
+  }
+
+  powercfg /setactive $newGuid
+  if ($LASTEXITCODE -ne 0) { throw "powercfg /setactive retornou código $LASTEXITCODE" }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $output = powercfg /getactivescheme
+  if ($output -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+    $guid = $matches[1]
+    [PSCustomObject]@{ success = $true; exists = $true; value = $guid } | ConvertTo-Json -Compress
+  } else {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+  }
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+    // Sem 'expected' fixo: o GUID do plano ativo após duplicar pode ser
+    // qualquer novo GUID gerado pelo Windows, não um valor conhecido de
+    // antemão. O motor aceita 'expected' ausente e só valida 'success'.
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if ($snapshotExists -eq $true -and $null -ne $snapshotValue) {
+    powercfg /setactive $snapshotValue
+    if ($LASTEXITCODE -ne 0) { throw "powercfg /setactive (restore) retornou código $LASTEXITCODE" }
+  } else {
+    # Fallback de segurança: nunca deixa o PC sem NENHUM plano ativo.
+    # Usa o GUID padrão universal do Windows para "Equilibrado".
+    powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'visual-performance',
+  category: 'Performance',
+  title: 'Priorizar Desempenho Visual',
+  description: 'Desativa animações de janelas, sombras e transparências, mantendo as fontes suaves (ClearType) intactas.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $result = [ordered]@{
+    MinAnimate         = Read-RegValue "HKCU:\\Control Panel\\Desktop\\WindowMetrics" "MinAnimate"
+    TaskbarAnimations  = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "TaskbarAnimations"
+    ListviewAlphaSelect= Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewAlphaSelect"
+    ListviewShadow     = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewShadow"
+    DragFullWindows    = Read-RegValue "HKCU:\\Control Panel\\Desktop" "DragFullWindows"
+    EnableAeroPeek     = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\DWM" "EnableAeroPeek"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if (-not (Test-Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics")) { New-Item -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Force | Out-Null }
+  Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -Value "0"
+
+  if (-not (Test-Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced")) { New-Item -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Force | Out-Null }
+  New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+  New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+  New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+
+  if (-not (Test-Path "HKCU:\\Control Panel\\Desktop")) { New-Item -Path "HKCU:\\Control Panel\\Desktop" -Force | Out-Null }
+  Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -Value "0"
+
+  if (-not (Test-Path "HKCU:\\Software\\Microsoft\\Windows\\DWM")) { New-Item -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Force | Out-Null }
+  New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $result = [ordered]@{
+    MinAnimate         = Read-RegValue "HKCU:\\Control Panel\\Desktop\\WindowMetrics" "MinAnimate"
+    TaskbarAnimations  = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "TaskbarAnimations"
+    ListviewAlphaSelect= Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewAlphaSelect"
+    ListviewShadow     = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewShadow"
+    DragFullWindows    = Read-RegValue "HKCU:\\Control Panel\\Desktop" "DragFullWindows"
+    EnableAeroPeek     = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\DWM" "EnableAeroPeek"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: {
+      exists: true,
+      value: {
+        MinAnimate: '0',
+        TaskbarAnimations: 0,
+        ListviewAlphaSelect: 0,
+        ListviewShadow: 0,
+        DragFullWindows: '0',
+        EnableAeroPeek: 0
+      }
     }
   },
-  {
-    id: 'visual-performance',
-    category: 'Performance',
-    title: 'Priorizar Desempenho Visual',
-    description: 'Desativa animações de janelas, sombras e transparências, mantendo as fontes suaves (ClearType) intactas.',
-    requiresAdmin: false,
-    commands: {
-      win: {
-        apply: `Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -Value "0" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -Value "0" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -Value 0 -ErrorAction SilentlyContinue`,
-        revert: `Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -Value "1" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -Value "1" -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -Value 1 -ErrorAction SilentlyContinue`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Restore-RegValue($path, $name, $val, $propType) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
     }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType $propType -Value $val -Force -ErrorAction Stop
+  }
+}
+
+try {
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue "HKCU:\\Control Panel\\Desktop\\WindowMetrics" "MinAnimate" $snapshotValue.MinAnimate "String"
+    Restore-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "TaskbarAnimations" $snapshotValue.TaskbarAnimations "DWord"
+    Restore-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewAlphaSelect" $snapshotValue.ListviewAlphaSelect "DWord"
+    Restore-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" "ListviewShadow" $snapshotValue.ListviewShadow "DWord"
+    Restore-RegValue "HKCU:\\Control Panel\\Desktop" "DragFullWindows" $snapshotValue.DragFullWindows "String"
+    Restore-RegValue "HKCU:\\Software\\Microsoft\\Windows\\DWM" "EnableAeroPeek" $snapshotValue.EnableAeroPeek "DWord"
+  } else {
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Desktop\\WindowMetrics" -Name "MinAnimate" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "TaskbarAnimations" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewAlphaSelect" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" -Name "ListviewShadow" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Desktop" -Name "DragFullWindows" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\DWM" -Name "EnableAeroPeek" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
   },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
   {
     // MIGRADO PARA O MOTOR AGNÓSTICO nesta rodada.
     // Rastreia apenas 'useplatformclock' via bcdedit. Atenção: em Windows
@@ -423,75 +974,353 @@ try {
   }
 },
   {
-    id: 'disable-mouse-accel',
-    category: 'Gaming',
-    title: 'Desativar Aceleração do Mouse',
-    description: 'Garante resposta 1:1 do ponteiro (Precision Pointer), essencial para mira precisa em jogos FPS.',
-    requiresAdmin: false,
-    commands: {
-      win: {
-        apply: `
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -Value "0"
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -Value "0"
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -Value "0"
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class MouseNative {
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+  id: 'disable-mouse-accel',
+  category: 'Gaming',
+  title: 'Desativar Aceleração do Mouse',
+  description: 'Garante resposta 1:1 do ponteiro (Precision Pointer), essencial para mira precisa em jogos FPS.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
 }
-"@
-$mouseParams = @(0, 0, 0)
-[MouseNative]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
-        `.trim(),
-        revert: `
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -Value "1"
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -Value "6"
-Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -Value "10"
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class MouseNativeRevert {
-  [DllImport("user32.dll", SetLastError = true)]
-  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
-}
-"@
-$mouseParams = @(6, 10, 1)
-[MouseNativeRevert]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
-        `.trim()
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
-  },
-  {
-    id: 'disable-fullscreen-opt',
-    category: 'Gaming',
-    title: 'Desativar Otimizações de Tela Cheia',
-    description: 'Desativa Fullscreen Optimizations e a gravação do Game Bar em segundo plano, reduzindo input lag e stutter.',
-    requiresAdmin: false,
-    commands: {
-      win: {
-        apply: `if (-not (Test-Path "HKCU:\\System\\GameConfigStore")) { New-Item -Path "HKCU:\\System\\GameConfigStore" -Force | Out-Null }; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 2; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -Value 2; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -Value 1; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -Value 0; if (-not (Test-Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR")) { New-Item -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Force | Out-Null }; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -Value 0`,
-        revert: `Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -Value 0 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -Value 1 -ErrorAction SilentlyContinue; Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -Value 1 -ErrorAction SilentlyContinue`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
-  },
-  {
-    id: 'background-apps',
-    category: 'Performance',
-    title: 'Suspender Apps em Segundo Plano',
-    description: 'Impede que aplicativos UWP consumam CPU quando minimizados.',
-    requiresAdmin: false,
-    commands: {
-      win: {
-        apply: `Set-ItemProperty -Path "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1 -ErrorAction SilentlyContinue`,
-        revert: `Set-ItemProperty -Path "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 0 -ErrorAction SilentlyContinue`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
+
+try {
+  $result = [ordered]@{
+    MouseSpeed      = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseSpeed"
+    MouseThreshold1 = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold1"
+    MouseThreshold2 = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold2"
   }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if (-not (Test-Path "HKCU:\\Control Panel\\Mouse")) { New-Item -Path "HKCU:\\Control Panel\\Mouse" -Force | Out-Null }
+  Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -Value "0"
+  Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -Value "0"
+  Set-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -Value "0"
+
+  Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseNativeApply {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+}
+"@
+  $mouseParams = @(0, 0, 0)
+  [MouseNativeApply]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $result = [ordered]@{
+    MouseSpeed      = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseSpeed"
+    MouseThreshold1 = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold1"
+    MouseThreshold2 = Read-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold2"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: {
+      exists: true,
+      value: { MouseSpeed: '0', MouseThreshold1: '0', MouseThreshold2: '0' }
+    }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+    }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    Set-ItemProperty -Path $path -Name $name -Value $val
+  }
+}
+
+try {
+  $speed = 1
+  $t1 = 6
+  $t2 = 10
+
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue "HKCU:\\Control Panel\\Mouse" "MouseSpeed" $snapshotValue.MouseSpeed
+    Restore-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold1" $snapshotValue.MouseThreshold1
+    Restore-RegValue "HKCU:\\Control Panel\\Mouse" "MouseThreshold2" $snapshotValue.MouseThreshold2
+
+    if ($null -ne $snapshotValue.MouseSpeed) { $speed = [int]$snapshotValue.MouseSpeed }
+    if ($null -ne $snapshotValue.MouseThreshold1) { $t1 = [int]$snapshotValue.MouseThreshold1 }
+    if ($null -ne $snapshotValue.MouseThreshold2) { $t2 = [int]$snapshotValue.MouseThreshold2 }
+  } else {
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseSpeed" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold1" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Mouse" -Name "MouseThreshold2" -ErrorAction SilentlyContinue
+  }
+
+  Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseNativeRestore {
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+}
+"@
+  $mouseParams = @($t1, $t2, $speed)
+  [MouseNativeRestore]::SystemParametersInfo(0x0004, 0, $mouseParams, 0x03) | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+  {
+  id: 'disable-fullscreen-opt',
+  category: 'Gaming',
+  title: 'Desativar Otimizações de Tela Cheia',
+  description: 'Desativa Fullscreen Optimizations e a gravação do Game Bar em segundo plano, reduzindo input lag e stutter.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $result = [ordered]@{
+    GameDVR_FSEBehaviorMode              = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorMode"
+    GameDVR_FSEBehaviorModeUserChoice    = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorModeUserChoice"
+    GameDVR_DXGIHonorFSEWindowsCompatible= Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_DXGIHonorFSEWindowsCompatible"
+    GameDVR_Enabled                      = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_Enabled"
+    AppCaptureEnabled                    = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" "AppCaptureEnabled"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if (-not (Test-Path "HKCU:\\System\\GameConfigStore")) { New-Item -Path "HKCU:\\System\\GameConfigStore" -Force | Out-Null }
+  New-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -PropertyType DWord -Value 2 -Force -ErrorAction Stop
+  New-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -PropertyType DWord -Value 2 -Force -ErrorAction Stop
+  New-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+  New-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+
+  if (-not (Test-Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR")) { New-Item -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Force | Out-Null }
+  New-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  $result = [ordered]@{
+    GameDVR_FSEBehaviorMode              = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorMode"
+    GameDVR_FSEBehaviorModeUserChoice    = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorModeUserChoice"
+    GameDVR_DXGIHonorFSEWindowsCompatible= Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_DXGIHonorFSEWindowsCompatible"
+    GameDVR_Enabled                      = Read-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_Enabled"
+    AppCaptureEnabled                    = Read-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" "AppCaptureEnabled"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: {
+      exists: true,
+      value: {
+        GameDVR_FSEBehaviorMode: 2,
+        GameDVR_FSEBehaviorModeUserChoice: 2,
+        GameDVR_DXGIHonorFSEWindowsCompatible: 1,
+        GameDVR_Enabled: 0,
+        AppCaptureEnabled: 0
+      }
+    }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+    }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $val -Force -ErrorAction Stop
+  }
+}
+
+try {
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorMode" $snapshotValue.GameDVR_FSEBehaviorMode
+    Restore-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_FSEBehaviorModeUserChoice" $snapshotValue.GameDVR_FSEBehaviorModeUserChoice
+    Restore-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_DXGIHonorFSEWindowsCompatible" $snapshotValue.GameDVR_DXGIHonorFSEWindowsCompatible
+    Restore-RegValue "HKCU:\\System\\GameConfigStore" "GameDVR_Enabled" $snapshotValue.GameDVR_Enabled
+    Restore-RegValue "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" "AppCaptureEnabled" $snapshotValue.AppCaptureEnabled
+  } else {
+    Remove-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_FSEBehaviorModeUserChoice" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_DXGIHonorFSEWindowsCompatible" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\System\\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR" -Name "AppCaptureEnabled" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+  {
+  id: 'background-apps',
+  category: 'Performance',
+  title: 'Suspender Apps em Segundo Plano',
+  description: 'Impede que aplicativos UWP consumam CPU quando minimizados.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+$name = "GlobalUserDisabled"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "GlobalUserDisabled" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "GlobalUserDisabled" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.GlobalUserDisabled } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
+$name = "GlobalUserDisabled"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+}
 ];
 
 function getPublicCatalog() {
@@ -626,16 +1455,28 @@ async function applyWithSnapshot(tweak) {
 
 /**
  * Fluxo: Restore (do snapshot, injetando $snapshotExists/$snapshotValue) →
- * Verify → Clean. Recusa reverter sem snapshot salvo.
+ * Verify → Clean. Recusa reverter sem snapshot salvo OU com snapshot
+ * corrompido/malformado (proteção contra dados inconsistentes em disco).
  */
 async function revertWithSnapshot(tweak) {
   const snapshot = getSnapshot(tweak.id);
 
-  if (!snapshot) {
-    log.error(`[snapshot-engine] Nenhum snapshot encontrado para "${tweak.id}" — reversão recusada.`);
+  const isValidSnapshot =
+    snapshot &&
+    snapshot.previousState &&
+    typeof snapshot.previousState === 'object' &&
+    'exists' in snapshot.previousState;
+
+  if (!isValidSnapshot) {
+    log.error(`[snapshot-engine] Snapshot ausente ou malformado para "${tweak.id}" — reversão recusada.`, snapshot);
+
+    // Snapshot corrompido não serve para mais nada — remove para não
+    // ficar travado tentando reverter contra um dado inválido para sempre.
+    if (snapshot) removeSnapshot(tweak.id);
+
     return {
       success: false, tweakId: tweak.id,
-      error: 'Nenhum estado original salvo para este ajuste. Não é possível reverter com segurança.'
+      error: 'Nenhum estado original válido foi encontrado para este ajuste. O registro de segurança foi limpo — você pode ativar o ajuste novamente para criar um novo snapshot correto.'
     };
   }
 

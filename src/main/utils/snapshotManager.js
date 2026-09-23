@@ -40,6 +40,12 @@ function persistSnapshots(data) {
  * { pathExists, propertyExists, value }.
  */
 function saveSnapshot(tweakId, stateData) {
+  if (!stateData || typeof stateData !== 'object' || !('exists' in stateData)) {
+    const err = new Error(`saveSnapshot chamado com stateData inválido para "${tweakId}": ${JSON.stringify(stateData)}`);
+    log.error('[snapshotManager]', err.message);
+    throw err;
+  }
+
   const all = loadSnapshots();
   all[tweakId] = {
     tweakId,
