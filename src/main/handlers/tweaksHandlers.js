@@ -10,11 +10,11 @@ const { saveSnapshot, getSnapshot, removeSnapshot } = require('../utils/snapshot
  * Catálogo de tweaks. Cada item pode ser:
  * - LEGADO: tem `commands.win.apply/revert` — aplica/reverte "cego".
  * - MOTOR AGNÓSTICO (`engine: 'snapshot'`): tem `read`, `apply`, `verify`,
- *   `restore`, cada um com seu próprio `.script` PowerShell. Nenhum deles
- *   é gerado pelo Node — cada tweak escreve seu próprio script, retornando
- *   sempre o contrato { success, exists, value }. Isso permite migrar
- *   qualquer tipo de estado no futuro (registro, serviço, bcdedit, arquivo
- *   de config), não só chaves de registro.
+ *   `restore`, cada um com seu próprio `.script` PowerShell. Todos os
+ *   scripts read/verify retornam o mesmo contrato { success, exists, value }
+ *   — read e verify devem ser IDÊNTICOS em formato, pois a comparação usa
+ *   deepEqual entre eles (necessário para valores em objeto, não só
+ *   primitivos).
  */
 const TWEAKS_CATALOG = [
   {
@@ -154,13 +154,141 @@ Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "Medium" -E
     id: 'disable-telemetry',
     category: 'Privacidade',
     title: 'Desativar Telemetria do Windows',
-    description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft.',
+    description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft (política de registro).',
     requiresAdmin: true,
     commands: {
       win: {
         apply: `if (-not (Test-Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection")) { New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 0`,
         revert: `Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name "AllowTelemetry" -Value 1 -ErrorAction SilentlyContinue`
       },
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
+  },
+  {
+    // NOVO — mecanismo diferente do tweak acima (que mexe em política de
+    // registro): este para e desativa os serviços de telemetria em si.
+    id: 'disable-telemetry-services',
+    category: 'Privacidade',
+    title: 'Desativar Serviços de Rastreamento (DiagTrack)',
+    description: 'Para e desativa os serviços de Experiências do Usuário Conectado e Telemetria (DiagTrack) e dmwappushservice.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Convert-StartMode($mode) {
+  switch ($mode) {
+    'Auto' { 'Automatic' }
+    'Manual' { 'Manual' }
+    'Disabled' { 'Disabled' }
+    default { 'Manual' }
+  }
+}
+try {
+  $serviceNames = @('DiagTrack','dmwappushservice')
+  $result = [ordered]@{}
+  $allExist = $true
+  foreach ($name in $serviceNames) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+      $allExist = $false
+      $result[$name] = $null
+    } else {
+      $result[$name] = [ordered]@{ WasRunning = ($svc.State -eq 'Running'); StartupType = (Convert-StartMode $svc.StartMode) }
+    }
+  }
+  [PSCustomObject]@{ success = $true; exists = $allExist; value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $serviceNames = @('DiagTrack','dmwappushservice')
+  foreach ($name in $serviceNames) {
+    $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+    if ($null -ne $svc) {
+      if ($svc.Status -ne 'Stopped') { Stop-Service -Name $name -Force -ErrorAction SilentlyContinue }
+      Set-Service -Name $name -StartupType Disabled -ErrorAction Stop
+    }
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Convert-StartMode($mode) {
+  switch ($mode) {
+    'Auto' { 'Automatic' }
+    'Manual' { 'Manual' }
+    'Disabled' { 'Disabled' }
+    default { 'Manual' }
+  }
+}
+try {
+  $serviceNames = @('DiagTrack','dmwappushservice')
+  $result = [ordered]@{}
+  $allExist = $true
+  foreach ($name in $serviceNames) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+      $allExist = $false
+      $result[$name] = $null
+    } else {
+      $result[$name] = [ordered]@{ WasRunning = ($svc.State -eq 'Running'); StartupType = (Convert-StartMode $svc.StartMode) }
+    }
+  }
+  [PSCustomObject]@{ success = $true; exists = $allExist; value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: {
+        exists: true,
+        value: {
+          DiagTrack: { WasRunning: false, StartupType: 'Disabled' },
+          dmwappushservice: { WasRunning: false, StartupType: 'Disabled' }
+        }
+      }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if ($snapshotExists -eq $true) {
+    $serviceNames = @('DiagTrack','dmwappushservice')
+    foreach ($name in $serviceNames) {
+      $original = $snapshotValue.$name
+      if ($null -ne $original) {
+        Set-Service -Name $name -StartupType $original.StartupType -ErrorAction SilentlyContinue
+        if ($original.WasRunning -eq $true) {
+          Start-Service -Name $name -ErrorAction SilentlyContinue
+        } else {
+          Stop-Service -Name $name -Force -ErrorAction SilentlyContinue
+        }
+      }
+    }
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: {
       linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
   },
@@ -193,20 +321,107 @@ Set-ItemProperty -Path $gamesPath -Name "Scheduling Category" -Value "Medium" -E
     }
   },
   {
-    id: 'disable-hpet',
-    category: 'Performance',
-    title: 'Desativar HPET (Timer de Alta Precisão)',
-    description: 'Reduz o overhead de sincronização de timer do Windows, diminuindo o input lag em jogos competitivos.',
-    requiresAdmin: true,
-    requiresReboot: true,
-    commands: {
-      win: {
-        apply: `bcdedit /deletevalue useplatformclock 2>$null; bcdedit /set disabledynamictick yes 2>$null; exit 0`,
-        revert: `bcdedit /deletevalue useplatformclock 2>$null; bcdedit /deletevalue disabledynamictick 2>$null; exit 0`
-      },
-      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-    }
+    // MIGRADO PARA O MOTOR AGNÓSTICO nesta rodada.
+    // Rastreia apenas 'useplatformclock' via bcdedit. Atenção: em Windows
+    // localizados (ex: PT-BR), bcdedit pode retornar "Sim"/"Não" em vez
+    // de "Yes"/"No" — se o teste em máquina PT-BR falhar na verificação,
+    // ajustar o `expected.value` ou normalizar a string no read/verify.
+ id: 'disable-hpet',
+  category: 'Performance',
+  title: 'Desativar HPET (Timer de Alta Precisão)',
+  description: 'Reduz o overhead de sincronização de timer do Windows, diminuindo o input lag em jogos competitivos.',
+  risk: 'medium',
+  requiresAdmin: true,
+  createsBackup: true,
+  requiresReboot: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Normalize-BcdBool($raw) {
+  if ($raw -match '(?i)^(yes|true|sim|verdadeiro)$') { return 'No'; }
+  if ($raw -match '(?i)^(no|false|não|nao|falso)$') { return 'No'; }
+  return $raw
+}
+try {
+  $output = bcdedit /enum '{current}' 2>$null
+  $line = $output | Where-Object { $_ -match 'useplatformclock' }
+  if ($null -eq $line) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+  } else {
+    $rawValue = (($line -split '\\s{2,}')[1]).Trim()
+    $normalized = if ($rawValue -match '(?i)^(yes|true|sim|verdadeiro)$') { 'Yes' }
+                  elseif ($rawValue -match '(?i)^(no|false|não|nao|falso)$') { 'No' }
+                  else { $rawValue }
+    [PSCustomObject]@{ success = $true; exists = $true; value = $normalized } | ConvertTo-Json -Compress
+  }
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
   },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  bcdedit /set useplatformclock false | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "bcdedit retornou código $LASTEXITCODE" }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    // Idêntico ao read.script, com a mesma normalização — garante que a
+    // comparação via deepEqual nunca dependa do idioma do Windows.
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $output = bcdedit /enum '{current}' 2>$null
+  $line = $output | Where-Object { $_ -match 'useplatformclock' }
+  if ($null -eq $line) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+  } else {
+    $rawValue = (($line -split '\\s{2,}')[1]).Trim()
+    $normalized = if ($rawValue -match '(?i)^(yes|true|sim|verdadeiro)$') { 'Yes' }
+                  elseif ($rawValue -match '(?i)^(no|false|não|nao|falso)$') { 'No' }
+                  else { $rawValue }
+    [PSCustomObject]@{ success = $true; exists = $true; value = $normalized } | ConvertTo-Json -Compress
+  }
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 'No' }
+  },
+  restore: {
+    // $snapshotValue chega como $null quando a propriedade não existia
+    // (seu caso) — o -match nunca é avaliado contra $null de forma
+    // problemática porque $snapshotExists já decide o ramo primeiro.
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if ($snapshotExists -eq $true) {
+    $boolValue = if ($snapshotValue -match '(?i)^(yes|true|sim|verdadeiro)$') { 'true' } else { 'false' }
+    bcdedit /set useplatformclock $boolValue | Out-Null
+  } else {
+    bcdedit /deletevalue useplatformclock | Out-Null
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
   {
     id: 'disable-mouse-accel',
     category: 'Gaming',
@@ -310,13 +525,36 @@ function computeOptimizationScore() {
 // --------------------------------------------------------------------
 
 /**
- * Converte um valor JS em literal PowerShell seguro para injeção em script
- * (usado ao montar o restore com $snapshotValue).
+ * Comparação profunda, insensível à ordem de chaves — necessária porque
+ * tweaks como o de serviços retornam objetos aninhados (não primitivos),
+ * onde String(objeto) sempre vira "[object Object]" e quebraria a
+ * comparação de verificação.
+ */
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || a === undefined || b === undefined) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return String(a) === String(b);
+
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => deepEqual(a[k], b[k]));
+}
+
+/**
+ * Converte um valor JS em literal PowerShell seguro para injeção no script
+ * de restore. Objetos são injetados como JSON + ConvertFrom-Json, permitindo
+ * navegação via $snapshotValue.NomeDoServico.Campo dentro do script.
  */
 function formatPsLiteral(value) {
   if (value === null || value === undefined) return '$null';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return value ? '$true' : '$false';
+  if (typeof value === 'object') {
+    const json = JSON.stringify(value).replace(/'/g, "''");
+    return `('${json}' | ConvertFrom-Json)`;
+  }
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
@@ -354,17 +592,16 @@ async function applyWithSnapshot(tweak) {
     saveSnapshot(tweak.id, { exists: !!before.exists, value: before.value ?? null });
 
     log.info(`[snapshot-engine] APPLY "${tweak.id}"...`);
-    await runCommandSmart(tweak.apply.script, tweak.requiresAdmin, 15000);
+    await runCommandSmart(tweak.apply.script, tweak.requiresAdmin, 20000);
 
     log.info(`[snapshot-engine] VERIFY "${tweak.id}"...`);
     const after = await runScriptAndParse(tweak.verify.script);
 
     const expected = tweak.verify.expected || {};
-    const verified =
-      (expected.exists === undefined || !!after.exists === !!expected.exists) &&
-      (expected.value === undefined || String(after.value) === String(expected.value));
+    const existsOk = expected.exists === undefined || !!after.exists === !!expected.exists;
+    const valueOk = expected.value === undefined || deepEqual(after.value, expected.value);
 
-    if (!verified) {
+    if (!existsOk || !valueOk) {
       log.error(`[snapshot-engine] Verificação falhou para "${tweak.id}". Esperado:`, expected, 'Obtido:', after);
       return {
         success: false, tweakId: tweak.id,
@@ -413,12 +650,12 @@ $snapshotValue = ${formatPsLiteral(value)}
 
   try {
     log.info(`[snapshot-engine] RESTORE "${tweak.id}"...`, snapshot.previousState);
-    await runCommandSmart(restoreScript, tweak.requiresAdmin, 15000);
+    await runCommandSmart(restoreScript, tweak.requiresAdmin, 20000);
 
     log.info(`[snapshot-engine] VERIFY (restore) "${tweak.id}"...`);
     const after = await runScriptAndParse(tweak.verify.script);
 
-    const restored = (!!after.exists === !!exists) && (!exists || String(after.value) === String(value));
+    const restored = (!!after.exists === !!exists) && deepEqual(after.value, value);
 
     if (!restored) {
       log.error(`[snapshot-engine] Falha ao verificar restauração de "${tweak.id}".`, after);
@@ -504,6 +741,12 @@ function registerTweaksHandlers() {
   }));
 }
 
+/**
+ * Reversão em lote: tweaks com motor de snapshot são revertidos
+ * individualmente (cada um com seu próprio Verify); tweaks legados sem
+ * admin revertem direto; tweaks legados com admin são agrupados em um
+ * único script elevado (um só UAC para o lote inteiro).
+ */
 async function revertAllTweaks() {
   const platform = os.platform();
   const appliedState = store.get('tweaksApplied', {});
