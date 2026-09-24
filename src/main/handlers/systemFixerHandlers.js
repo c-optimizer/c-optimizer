@@ -36,9 +36,11 @@ function runSystemCommand(command, args, stepId, window) {
       return resolve({ stepId, success: false, error: msg });
     }
 
-    const fullCommand = `chcp 65001 >nul && ${command} ${args.join(' ')}`;
-
-    const ptyProcess = pty.spawn('cmd.exe', ['/c', fullCommand], {
+    // cmd.exe como shell interativo do PTY (sem /c) — permanece vivo,
+    // permitindo escrever múltiplos comandos na mesma sessão em vez de
+    // aninhar processos, o que mantém DISM/SFC como filhos diretos do
+    // pseudo-terminal (preserva o flush imediato de progresso).
+    const ptyProcess = pty.spawn('cmd.exe', [], {
       name: 'xterm',
       cols: 120,
       rows: 30,
@@ -47,6 +49,9 @@ function runSystemCommand(command, args, stepId, window) {
     });
 
     let buffer = '';
+    let finished = false;
+
+    const MARKER = '__COPT_DONE__';
 
     ptyProcess.onData((data) => {
       buffer += data;
@@ -54,19 +59,36 @@ function runSystemCommand(command, args, stepId, window) {
       buffer = parts.pop();
       for (const part of parts) {
         const text = stripAnsi(part).trim();
-        if (text && window && !window.isDestroyed()) {
+        if (!text) continue;
+
+        if (text.includes(MARKER)) {
+          finished = true;
+          const codeMatch = text.match(new RegExp(`${MARKER}(\\d+)`));
+          const exitCode = codeMatch ? parseInt(codeMatch[1], 10) : 0;
+          ptyProcess.kill();
+          resolve({ stepId, success: exitCode === 0, exitCode });
+          continue;
+        }
+
+        if (window && !window.isDestroyed()) {
           window.webContents.send('system-fixer:progress', { stepId, line: text });
         }
       }
     });
 
     ptyProcess.onExit(({ exitCode }) => {
-      const finalText = stripAnsi(buffer).trim();
-      if (finalText && window && !window.isDestroyed()) {
-        window.webContents.send('system-fixer:progress', { stepId, line: finalText });
+      if (!finished) {
+        resolve({ stepId, success: exitCode === 0, exitCode });
       }
-      resolve({ stepId, success: exitCode === 0, exitCode });
     });
+
+    // Roda chcp na sessão (sem gerar processo aninhado), depois o comando
+    // real, e ao final imprime um marcador com o código de saída para
+    // sabermos exatamente quando o comando terminou dentro da sessão viva.
+    ptyProcess.write('chcp 65001\r');
+    setTimeout(() => {
+      ptyProcess.write(`${command} ${args.join(' ')} & echo ${MARKER}%errorlevel%\r`);
+    }, 300);
   });
 }
 
