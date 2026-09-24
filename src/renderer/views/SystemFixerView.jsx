@@ -166,17 +166,26 @@ function SystemFixerView() {
         )}
 
         {repairLogs.length > 0 && (
-          <div className="w-full bg-c-bg border border-c-border rounded-lg p-3 max-h-48 overflow-y-auto flex flex-col gap-1 text-left">
-            <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
-              <Terminal size={12} />
-              Progresso
-            </div>
-            {repairLogs.map((line, idx) => (
-              <p key={idx} className="text-[11px] text-slate-500 font-mono truncate">{line}</p>
-            ))}
-          </div>
-        )}
-      </div>
+  <div className="w-full bg-c-bg border border-c-border rounded-lg p-3 max-h-48 overflow-y-auto flex flex-col gap-1 text-left">
+    <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1 shrink-0">
+      <Terminal size={12} />
+      Progresso
+    </div>
+    {repairLogs.map((line, idx) => (
+      <p 
+        key={idx} 
+        /* shrink-0 impede o esmagamento da altura, leading-relaxed corrige o corte das letras */
+        className="text-[11px] leading-relaxed text-slate-500 font-mono truncate shrink-0"
+      >
+        {line}
+      </p>
+    ))}
+    {/* Elemento fantasma para garantir o padding inferior no scroll do Flexbox */}
+    <div className="h-1 shrink-0"></div>
+  </div>
+)}
+
+  </div>
 
       {/* Verificação de Disco */}
       <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-4">
