@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Folder, Zap, Trash, RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  Folder, Zap, Trash, RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2,
+  MessageSquare, Gamepad2, FileWarning, Image, Clock, Type
+} from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -7,15 +10,34 @@ const ICON_MAP = {
   temp: Folder,
   prefetch: Zap,
   'recycle-bin': Trash,
-  'wu-cache': RefreshCw
+  'wu-cache': RefreshCw,
+  'discord-cache': MessageSquare,
+  'steam-cache': Gamepad2,
+  'log-crash': FileWarning,
+  'thumbnail-cache': Image,
+  'recent-docs': Clock,
+  'font-cache': Type
 };
 
 const DESCRIPTION_MAP = {
   temp: 'Arquivos temporários gerados por aplicativos do sistema.',
   prefetch: 'Dados de pré-carregamento usados pelo Windows para acelerar a inicialização de apps.',
   'recycle-bin': 'Arquivos excluídos que ainda ocupam espaço em disco.',
-  'wu-cache': 'Pacotes de atualização já instalados que não são mais necessários.'
+  'wu-cache': 'Pacotes de atualização já instalados que não são mais necessários.',
+  'discord-cache': 'Cache, dados de sessão e armazenamento local do Discord (estável, PTB e Canary).',
+  'steam-cache': 'Cache de shaders, HTML, dumps de erro e cache HTTP da Steam.',
+  'log-crash': 'Relatórios de erro e logs de falhas antigos do Windows.',
+  'thumbnail-cache': 'Cache de miniaturas e ícones — reconstrói automaticamente após a limpeza.',
+  'recent-docs': 'Histórico de arquivos e documentos abertos recentemente.',
+  'font-cache': 'Cache de fontes do Windows, reconstruído automaticamente pelo sistema.'
 };
+
+// Agrupamento visual — mesma categoria fica junto na tela
+const GROUPS = [
+  { title: 'Sistema', ids: ['temp', 'prefetch', 'recycle-bin', 'wu-cache'] },
+  { title: 'Aplicativos', ids: ['discord-cache', 'steam-cache'] },
+  { title: 'Diagnóstico e Interface', ids: ['log-crash', 'thumbnail-cache', 'recent-docs', 'font-cache'] }
+];
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return '0 MB';
@@ -26,8 +48,7 @@ function formatBytes(bytes) {
 
 function formatDate(isoString) {
   if (!isoString) return null;
-  const date = new Date(isoString);
-  return date.toLocaleString();
+  return new Date(isoString).toLocaleString();
 }
 
 function CleanupView() {
@@ -62,9 +83,7 @@ function CleanupView() {
     }
 
     loadInitial();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
   const handleToggle = (id, value) => {
@@ -72,6 +91,8 @@ function CleanupView() {
   };
 
   const anySelected = Object.values(selected).some(Boolean);
+
+  const findTarget = (id) => targets.find((t) => t.id === id);
 
   const handleClean = async () => {
     const idsToClean = Object.keys(selected).filter((id) => selected[id]);
@@ -113,20 +134,30 @@ function CleanupView() {
           Carregando alvos de limpeza...
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {targets.map((target) => (
-            <CardOption
-              key={target.id}
-              icon={ICON_MAP[target.id]}
-              title={target.label}
-              description={DESCRIPTION_MAP[target.id] || ''}
-              tags={[]}
-              enabled={!!selected[target.id]}
-              onToggle={(value) => handleToggle(target.id, value)}
-              variant="danger"
-            />
-          ))}
-        </div>
+        GROUPS.map((group) => {
+          const groupTargets = group.ids.map(findTarget).filter(Boolean);
+          if (groupTargets.length === 0) return null;
+
+          return (
+            <div key={group.title} className="flex flex-col gap-3">
+              <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wide">{group.title}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {groupTargets.map((target) => (
+                  <CardOption
+                    key={target.id}
+                    icon={ICON_MAP[target.id]}
+                    title={target.label}
+                    description={DESCRIPTION_MAP[target.id] || ''}
+                    tags={[]}
+                    enabled={!!selected[target.id]}
+                    onToggle={(value) => handleToggle(target.id, value)}
+                    variant="danger"
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })
       )}
 
       {resultSummary !== null && (

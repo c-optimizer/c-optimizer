@@ -10,6 +10,7 @@ import RestoreView from './views/RestoreView';
 import AppsView from './views/AppsView';
 import SettingsView from './views/SettingsView';
 import AuthView from './views/AuthView';
+import SystemFixerView from './views/SystemFixerView';
 
 const VIEWS = {
   dashboard: { component: DashboardView, titleKey: 'dashboard.title', subtitleKey: 'dashboard.subtitle' },
@@ -18,7 +19,8 @@ const VIEWS = {
   restore: { component: RestoreView, titleKey: 'restore.title', subtitleKey: 'restore.subtitle' },
   apps: { component: AppsView, titleKey: 'apps.title', subtitleKey: 'apps.subtitle' },
   settings: { component: SettingsView, titleKey: 'settings.title', subtitleKey: 'settings.subtitle' },
-  auth: { component: AuthView, titleKey: 'auth.title', subtitleKey: 'auth.subtitle' }
+  auth: { component: AuthView, titleKey: 'auth.title', subtitleKey: 'auth.subtitle' },
+  'system-fixer': { component: SystemFixerView, titleKey: 'systemFixer.title', subtitleKey: 'systemFixer.subtitle' }
 };
 
 function AppShell() {

@@ -12,6 +12,7 @@ const { registerAppsHandlers } = require('./handlers/appsHandlers');
 const { registerAuthHandlers } = require('./handlers/authHandlers');
 const { registerDiskHandlers } = require('./handlers/diskHandlers');
 const { registerWingetHandlers } = require('./handlers/wingetHandlers');
+const { registerSystemFixerHandlers } = require('./handlers/systemFixerHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -108,6 +109,7 @@ app.whenReady().then(() => {
   registerAuthHandlers();
   registerDiskHandlers();
   registerWingetHandlers();
+  registerSystemFixerHandlers();
 
   createWindow();
 

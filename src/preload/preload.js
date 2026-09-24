@@ -9,6 +9,9 @@ const validInvokeChannels = [
   'system:get-memory-profile',
   'system:open-external',
   'system:copy-logs',
+  'system-fixer:is-admin',
+  'system-fixer:run-repair',
+  'system-fixer:check-drive',
 
   // Otimizações
   'tweaks:get-catalog',
@@ -65,7 +68,8 @@ const validOnChannels = [
   'winget:progress',
   'update:available',
   'update:progress',
-  'update:downloaded'
+  'update:downloaded',
+  'system-fixer:progress'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

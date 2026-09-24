@@ -11,10 +11,14 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
+import { Wrench } from 'lucide-react'; // adicione ao import existente
+
+
 const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, labelKey: 'sidebar.dashboard' },
   { id: 'optimizations', icon: SlidersHorizontal, labelKey: 'sidebar.optimizations' },
   { id: 'cleanup', icon: Trash2, labelKey: 'sidebar.cleanup' },
+  { id: 'system-fixer', icon: Wrench, labelKey: 'sidebar.systemFixer' }, // nova linha
   { id: 'restore', icon: RotateCcw, labelKey: 'sidebar.restore' },
   { id: 'apps', icon: AppWindow, labelKey: 'sidebar.apps' },
   { id: 'settings', icon: Settings, labelKey: 'sidebar.settings' },

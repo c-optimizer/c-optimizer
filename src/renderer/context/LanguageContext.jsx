@@ -9,7 +9,8 @@ const translations = {
       restore: 'Restauração',
       apps: 'Apps',
       settings: 'Configurações',
-      auth: 'Autenticação'
+      auth: 'Autenticação',
+      systemFixer: 'Reparos',
     },
     header: {
       statusProtected: 'Sistema Otimizado',
@@ -80,7 +81,11 @@ const translations = {
     common: {
       enabled: 'Ativado',
       disabled: 'Desativado'
-    }
+    },
+    systemFixer: {
+  title: 'Reparos',
+  subtitle: 'Diagnóstico e correção de arquivos de sistema'
+  }
   },
   'en-US': {
     sidebar: {
@@ -90,7 +95,8 @@ const translations = {
       restore: 'Restore',
       apps: 'Apps',
       settings: 'Settings',
-      auth: 'Authentication'
+      auth: 'Authentication',
+      systemFixer: 'Repair',
     },
     header: {
       statusProtected: 'System Optimized',
@@ -161,7 +167,11 @@ const translations = {
     common: {
       enabled: 'Enabled',
       disabled: 'Disabled'
-    }
+    },
+    systemFixer: {
+  title: 'Repair',
+  subtitle: 'Diagnosis and repair of system files'
+  }
   },
   'es-ES': {
     sidebar: {
@@ -171,7 +181,8 @@ const translations = {
       restore: 'Restauración',
       apps: 'Aplicaciones',
       settings: 'Configuración',
-      auth: 'Autenticación'
+      auth: 'Autenticación',
+      systemFixer: 'Reparo',
     },
     header: {
       statusProtected: 'Sistema Optimizado',
@@ -242,7 +253,11 @@ const translations = {
     common: {
       enabled: 'Activado',
       disabled: 'Desactivado'
-    }
+    },
+    systemFixer: {
+  title: 'Reparo',
+  subtitle: 'Diagnóstico y corrección de archivos del sistema'
+},
   }
 };
 

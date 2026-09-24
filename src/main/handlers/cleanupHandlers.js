@@ -38,6 +38,32 @@ async function clearDirectoryContents(dirPath) {
   return { freedBytes, skippedCount };
 }
 
+/**
+ * Localiza a pasta de instalação do Steam via registro. Retorna null se
+ * o Steam não estiver instalado — o cleaner correspondente simplesmente
+ * reporta "nada a limpar" nesse caso, sem erro.
+ */
+async function getSteamPath() {
+  const script = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $path = (Get-ItemProperty -Path "HKCU:\\Software\\Valve\\Steam" -Name "SteamPath" -ErrorAction Stop).SteamPath
+  [PSCustomObject]@{ success = $true; exists = $true; value = $path } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+  `.trim();
+
+  try {
+    const { stdout } = await runShellCommand(script, 10000);
+    const parsed = JSON.parse((stdout || '').trim());
+    return parsed.exists ? parsed.value.replace(/\//g, '\\') : null;
+  } catch {
+    return null;
+  }
+}
+
 const CLEANUP_TARGETS = {
   temp: {
     id: 'temp',
@@ -52,8 +78,6 @@ const CLEANUP_TARGETS = {
     async run() {
       if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
       const prefetchPath = path.join(process.env.WINDIR || 'C:\\Windows', 'Prefetch');
-      // Requer admin de verdade (arquivos do sistema) — antes usávamos fs
-      // direto, que falhava silenciosamente para usuários não-admin.
       const script = `Remove-Item -Path '${prefetchPath}\\*.pf' -Force -ErrorAction SilentlyContinue`;
       await runCommandSmart(script, true, 30000);
       return { freedBytes: 0, skippedCount: 0, unmeasured: true };
@@ -74,14 +98,127 @@ const CLEANUP_TARGETS = {
     async run() {
       if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
       const wuPath = path.join(process.env.WINDIR || 'C:\\Windows', 'SoftwareDistribution', 'Download');
-      // Stop/clear/start em UM ÚNICO script elevado — evita 3 prompts de UAC
-      // e corrige o bug anterior de stop/start rodarem sem privilégio.
       const script = `
 Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
 Remove-Item -Path '${wuPath}\\*' -Recurse -Force -ErrorAction SilentlyContinue
 Start-Service -Name wuauserv -ErrorAction SilentlyContinue
       `.trim();
       await runCommandSmart(script, true, 60000);
+      return { freedBytes: 0, skippedCount: 0, unmeasured: true };
+    }
+  },
+  'discord-cache': {
+    id: 'discord-cache',
+    label: 'Cache do Discord',
+    async run() {
+      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+      // Cobre Discord estável, PTB e Canary — cada um com pasta própria.
+      const variants = ['discord', 'discordptb', 'discordcanary'];
+      let totalFreed = 0;
+      let totalSkipped = 0;
+
+      for (const variant of variants) {
+        const basePath = path.join(appData, variant);
+        const subfolders = ['Cache', 'Code Cache', 'GPUCache', 'Local Storage', 'Session Storage'];
+        for (const sub of subfolders) {
+          const result = await clearDirectoryContents(path.join(basePath, sub));
+          totalFreed += result.freedBytes;
+          totalSkipped += result.skippedCount;
+        }
+      }
+
+      return { freedBytes: totalFreed, skippedCount: totalSkipped };
+    }
+  },
+  'steam-cache': {
+    id: 'steam-cache',
+    label: 'Cache da Steam',
+    async run() {
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
+      const steamPath = await getSteamPath();
+      if (!steamPath) return { freedBytes: 0, skippedCount: 0, unmeasured: true };
+
+      const targets = [
+        path.join(steamPath, 'steamapps', 'shadercache'),
+        path.join(steamPath, 'htmlcache'),
+        path.join(steamPath, 'dumps'),
+        path.join(steamPath, 'appcache', 'httpcache')
+      ];
+
+      let totalFreed = 0;
+      let totalSkipped = 0;
+      for (const target of targets) {
+        const result = await clearDirectoryContents(target);
+        totalFreed += result.freedBytes;
+        totalSkipped += result.skippedCount;
+      }
+
+      return { freedBytes: totalFreed, skippedCount: totalSkipped };
+    }
+  },
+  'log-crash': {
+    id: 'log-crash',
+    label: 'Logs e Relatórios de Erro',
+    async run() {
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
+
+      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const userCrashDumps = path.join(localAppData, 'CrashDumps');
+      const userResult = await clearDirectoryContents(userCrashDumps);
+
+      // Pasta do WER pertence ao sistema — requer admin.
+      const werPath = path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'Microsoft', 'Windows', 'WER');
+      const script = `Remove-Item -Path '${werPath}\\ReportArchive\\*','${werPath}\\ReportQueue\\*' -Recurse -Force -ErrorAction SilentlyContinue`;
+      await runCommandSmart(script, true, 30000);
+
+      return { freedBytes: userResult.freedBytes, skippedCount: userResult.skippedCount, unmeasured: true };
+    }
+  },
+  'thumbnail-cache': {
+    id: 'thumbnail-cache',
+    label: 'Cache de Miniaturas e Ícones',
+    async run() {
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
+
+      // Fecha o Explorer momentaneamente para liberar o lock dos arquivos
+      // thumbcache_*.db, senão a exclusão falha silenciosamente na maioria
+      // dos casos. O Explorer reinicia sozinho logo em seguida.
+      const script = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$explorerPath = "$env:LOCALAPPDATA\\Microsoft\\Windows\\Explorer"
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Remove-Item -Path "$explorerPath\\thumbcache_*.db" -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$explorerPath\\iconcache_*.db" -Force -ErrorAction SilentlyContinue
+Start-Process explorer.exe
+      `.trim();
+
+      await runCommandSmart(script, true, 20000);
+      return { freedBytes: 0, skippedCount: 0, unmeasured: true };
+    }
+  },
+  'recent-docs': {
+    id: 'recent-docs',
+    label: 'Documentos Recentes',
+    async run() {
+      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+      const recentPath = path.join(appData, 'Microsoft', 'Windows', 'Recent');
+      return clearDirectoryContents(recentPath);
+    }
+  },
+  'font-cache': {
+    id: 'font-cache',
+    label: 'Cache de Fontes',
+    async run() {
+      if (os.platform() !== 'win32') return { freedBytes: 0, skippedCount: 0 };
+      const script = `
+Stop-Service -Name FontCache -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:LOCALAPPDATA\\FontCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:WINDIR\\ServiceProfiles\\LocalService\\AppData\\Local\\FontCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Start-Service -Name FontCache -ErrorAction SilentlyContinue
+      `.trim();
+      await runCommandSmart(script, true, 20000);
       return { freedBytes: 0, skippedCount: 0, unmeasured: true };
     }
   }
