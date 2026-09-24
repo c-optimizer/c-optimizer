@@ -18,7 +18,7 @@ function SystemFixerView() {
 
   useEffect(() => {
     let isMounted = true;
-    let unsubscribe = () => {};
+    let unsubscribe = () => { };
 
     async function init() {
       try {
@@ -39,11 +39,9 @@ function SystemFixerView() {
 
     init();
 
-   unsubscribe = window.electronAPI.on('system-fixer:progress', ({ stepId, line }) => {
+    unsubscribe = window.electronAPI.on('system-fixer:progress', ({ stepId, line }) => {
   if (stepId === 'dism' || stepId === 'sfc') {
     setRepairLogs((prev) => {
-      // Linhas de porcentagem (contêm '%' ou '=') substituem a última
-      // entrada em vez de empilhar — evita spam de "63.0%, 63.0%, 63.0%..."
       const isProgressLine = /%|====/.test(line);
       if (isProgressLine && prev.length > 0 && /%|====/.test(prev[prev.length - 1])) {
         return [...prev.slice(0, -1), `[${stepId.toUpperCase()}] ${line}`];

@@ -1,87 +1,70 @@
 const { ipcMain, BrowserWindow } = require('electron');
-const { spawn, execSync } = require('child_process');
-const iconv = require('iconv-lite');
 const os = require('os');
 const { isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
 
-let cachedCodepage = null;
-
-/**
- * Detecta o codepage OEM ativo do console (ex: 850, 860, 1252) — é o que
- * DISM/SFC/chkdsk realmente usam ao escrever para um stdout redirecionado,
- * ignorando qualquer 'chcp' que tentemos aplicar no processo filho. Sem
- * decodificar com o codepage certo, acentos viram mojibake E os caracteres
- * de controle (\r, \b) deixam de ser reconhecidos, travando o parser de
- * progresso.
- */
-function detectOemCodepage() {
-  if (cachedCodepage) return cachedCodepage;
-  try {
-    const output = execSync('chcp', { windowsHide: true }).toString('ascii');
-    const match = output.match(/(\d{3,5})/);
-    cachedCodepage = match ? `cp${match[1]}` : 'cp850';
-  } catch {
-    cachedCodepage = 'cp850'; // fallback razoável para Windows ocidental
-  }
-  log.info(`[system-fixer] Codepage OEM detectado: ${cachedCodepage}`);
-  return cachedCodepage;
+let pty;
+try {
+  pty = require('node-pty');
+} catch (err) {
+  log.error('[system-fixer] node-pty não pôde ser carregado:', err.message);
 }
 
 /**
- * Roda DISM ou SFC, decodificando a saída com o codepage OEM real (não
- * UTF-8) e reconstruindo a linha de progresso como um terminal faria
- * ('\r' reinicia o cursor, '\b' apaga o caractere anterior, '\n' fecha a
- * linha) — sem isso a barra de porcentagem, animada via backspace, nunca
- * é interpretada corretamente.
+ * Remove sequências de escape ANSI (cores, posicionamento de cursor) que
+ * o pseudo-terminal pode incluir na saída — queremos só o texto legível.
+ */
+function stripAnsi(str) {
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+}
+
+/**
+ * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty.
+ * Isso é necessário porque, quando esses comandos detectam que não estão
+ * anexados a um console interativo (caso de um spawn com pipes comuns),
+ * o Windows passa a bufferizar a saída em blocos grandes, só liberando
+ * tudo de uma vez no final — por isso a % nunca aparecia em tempo real,
+ * independente de como tratávamos o parsing do lado do Node. Um PTY faz
+ * o processo "acreditar" que está num terminal de verdade, restaurando o
+ * flush imediato linha a linha.
  */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
-    const codepage = detectOemCodepage();
-    const fullCommand = `${command} ${args.join(' ')}`;
-    const child = spawn(fullCommand, [], { windowsHide: true, shell: true });
-
-    let lineBuffer = [];
-    let cursor = 0;
-
-    function emitCurrentLine() {
-      const text = lineBuffer.join('').trim();
-      if (text && window && !window.isDestroyed()) {
-        window.webContents.send('system-fixer:progress', { stepId, line: text });
-      }
+    if (!pty) {
+      const msg = 'Módulo de terminal (node-pty) não disponível nesta instalação.';
+      log.error(`[system-fixer] ${msg}`);
+      return resolve({ stepId, success: false, error: msg });
     }
 
-    function processChunk(chunk) {
-      const str = iconv.decode(chunk, codepage);
-      for (const ch of str) {
-        if (ch === '\r') {
-          cursor = 0;
-        } else if (ch === '\n') {
-          emitCurrentLine();
-          lineBuffer = [];
-          cursor = 0;
-        } else if (ch === '\b') {
-          cursor = Math.max(cursor - 1, 0);
-        } else if (ch.charCodeAt(0) >= 0x20 || ch === '\t') {
-          lineBuffer[cursor] = ch;
-          cursor++;
-        }
-      }
-      emitCurrentLine();
-    }
-
-    child.stdout?.on('data', processChunk);
-    child.stderr?.on('data', processChunk);
-
-    child.on('close', (code) => {
-      emitCurrentLine();
-      resolve({ stepId, success: code === 0, exitCode: code });
+    const ptyProcess = pty.spawn(command, args, {
+      name: 'xterm',
+      cols: 120,
+      rows: 30,
+      cwd: process.cwd(),
+      env: process.env
     });
 
-    child.on('error', (err) => {
-      log.error(`[system-fixer] Erro ao rodar "${stepId}":`, err.message);
-      resolve({ stepId, success: false, error: err.message });
+    let buffer = '';
+
+    ptyProcess.onData((data) => {
+      buffer += data;
+      const parts = buffer.split(/\r\n|\r|\n/);
+      buffer = parts.pop();
+      for (const part of parts) {
+        const text = stripAnsi(part).trim();
+        if (text && window && !window.isDestroyed()) {
+          window.webContents.send('system-fixer:progress', { stepId, line: text });
+        }
+      }
+    });
+
+    ptyProcess.onExit(({ exitCode }) => {
+      const finalText = stripAnsi(buffer).trim();
+      if (finalText && window && !window.isDestroyed()) {
+        window.webContents.send('system-fixer:progress', { stepId, line: finalText });
+      }
+      resolve({ stepId, success: exitCode === 0, exitCode });
     });
   });
 }
@@ -121,6 +104,7 @@ function runDriveCheck(driveLetter, window) {
       });
     }
 
+    const { spawn } = require('child_process');
     const child = spawn('cmd.exe', ['/c', `chkdsk ${driveLetter}: /f /r`], {
       windowsHide: false,
       stdio: 'ignore'
