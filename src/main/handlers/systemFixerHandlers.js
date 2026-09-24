@@ -20,14 +20,13 @@ function stripAnsi(str) {
 }
 
 /**
- * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty.
- * Isso é necessário porque, quando esses comandos detectam que não estão
- * anexados a um console interativo (caso de um spawn com pipes comuns),
- * o Windows passa a bufferizar a saída em blocos grandes, só liberando
- * tudo de uma vez no final — por isso a % nunca aparecia em tempo real,
- * independente de como tratávamos o parsing do lado do Node. Um PTY faz
- * o processo "acreditar" que está num terminal de verdade, restaurando o
- * flush imediato linha a linha.
+ * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty,
+ * resolvendo a bufferização de saída do Windows. Mas o PTY nasce com o
+ * codepage OEM padrão do sistema (ex: 850 em Windows PT-BR) — por isso
+ * rodamos 'chcp 65001' DENTRO do próprio terminal, antes do comando real,
+ * para forçar UTF-8 na sessão. Diferente de tentar 'chcp' fora de um PTY
+ * (que não tem efeito sobre DISM/SFC), aqui funciona porque o processo
+ * realmente enxerga um console interativo.
  */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
@@ -37,7 +36,9 @@ function runSystemCommand(command, args, stepId, window) {
       return resolve({ stepId, success: false, error: msg });
     }
 
-    const ptyProcess = pty.spawn(command, args, {
+    const fullCommand = `chcp 65001 >nul && ${command} ${args.join(' ')}`;
+
+    const ptyProcess = pty.spawn('cmd.exe', ['/c', fullCommand], {
       name: 'xterm',
       cols: 120,
       rows: 30,
