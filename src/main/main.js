@@ -13,6 +13,9 @@ const { registerAuthHandlers } = require('./handlers/authHandlers');
 const { registerDiskHandlers } = require('./handlers/diskHandlers');
 const { registerWingetHandlers } = require('./handlers/wingetHandlers');
 const { registerSystemFixerHandlers } = require('./handlers/systemFixerHandlers');
+const { setupTray, destroyTray } = require('./utils/tray');
+const { registerNotificationHandlers, notifyIfEnabled } = require('./handlers/notificationHandlers');
+const { registerChangelogHandlers } = require('./handlers/changelogHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -46,6 +49,11 @@ function setupAutoUpdater(window) {
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[autoUpdater] Atualização baixada:', info.version);
     window.webContents.send('update:downloaded', info);
+    autoUpdater.on('update-downloaded', (info) => {
+      log.info('[autoUpdater] Atualização baixada:', info.version);
+      notifyIfEnabled('Atualização pronta', `A versão ${info.version} foi baixada. Reinicie para aplicar.`);
+      window.webContents.send('update:downloaded', info);
+    });
   });
 }
 
@@ -97,6 +105,8 @@ function createWindow() {
     log.info('Janela principal fechada.');
     mainWindow = null;
   });
+  const iconPath = path.join(__dirname, '../../build/icon.ico');
+  setupTray(mainWindow, iconPath);
 }
 
 app.whenReady().then(() => {
@@ -110,6 +120,8 @@ app.whenReady().then(() => {
   registerDiskHandlers();
   registerWingetHandlers();
   registerSystemFixerHandlers();
+  registerNotificationHandlers();
+  registerChangelogHandlers();
 
   createWindow();
 
@@ -129,6 +141,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   log.info('Encerrando C-Optimizer.');
+  destroyTray();
   stopStatsStreaming();
   if (process.platform !== 'darwin') {
     app.quit();

@@ -1449,7 +1449,675 @@ try {
     commands: {
       linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
     }
+  },
+  {
+  id: 'hide-action-center',
+  category: 'Performance',
+  title: 'Ocultar Central de Ações',
+  description: 'Remove o ícone da Central de Ações/Notificações da barra de tarefas.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
+$name = "DisableNotificationCenter"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
   }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "DisableNotificationCenter" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "DisableNotificationCenter" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.DisableNotificationCenter } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
+$name = "DisableNotificationCenter"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'hide-people-icon',
+  category: 'Performance',
+  title: 'Ocultar Ícone de Contatos (People)',
+  description: 'Remove o ícone de contatos/People da barra de tarefas.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+$name = "PeopleBand"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "PeopleBand" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "PeopleBand" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.PeopleBand } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
+$name = "PeopleBand"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'remove-shortcut-suffix',
+  category: 'Performance',
+  title: 'Remover Sufixo "- Atalho" de Novos Atalhos',
+  description: 'Novos atalhos criados no Windows não terão mais o sufixo "- Atalho" no nome.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+$name = "link"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  # 'link' é um valor binário — convertemos para array de bytes para poder
+  # serializar em JSON e comparar de forma confiável.
+  $bytes = [byte[]]$item.$name
+  [PSCustomObject]@{ success = $true; exists = $true; value = ($bytes -join ',') } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+# Valor binário 00 00 00 00 remove o sufixo padrão " - Atalho"/" - Shortcut"
+$bytes = [byte[]](0,0,0,0)
+New-ItemProperty -LiteralPath $path -Name "link" -PropertyType Binary -Value $bytes -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "link" -ErrorAction Stop
+  $bytes = [byte[]]$item.link
+  [PSCustomObject]@{ success = $true; exists = $true; value = ($bytes -join ',') } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: '0,0,0,0' }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
+$name = "link"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  $bytes = [byte[]]($snapshotValue -split ',' | ForEach-Object { [byte]$_ })
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType Binary -Value $bytes -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'taskbar-transparency',
+  category: 'Performance',
+  title: 'Aumentar Transparência da Barra de Tarefas',
+  description: 'Deixa a barra de tarefas mais transparente, sem afetar a transparência geral do sistema.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "UseOLEDTaskbarTransparency"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "UseOLEDTaskbarTransparency" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "UseOLEDTaskbarTransparency" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.UseOLEDTaskbarTransparency } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "UseOLEDTaskbarTransparency"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'explorer-compact-mode',
+  category: 'Performance',
+  title: 'Modo Compacto do Explorador de Arquivos',
+  description: 'Reduz o espaçamento entre itens no Explorador de Arquivos, mostrando mais itens na tela.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "UseCompactMode"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "UseCompactMode" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "UseCompactMode" -ErrorAction Stop
+  [PSCustomObject]@{ success = $true; exists = $true; value = $item.UseCompactMode } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "UseCompactMode"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: {
+    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+  }
+},
+{
+  id: 'disable-insider',
+  category: 'Privacidade',
+  title: 'Bloquear Windows Insider',
+  description: 'Impede o download de atualizações não estáveis (pré-lançamento) do Windows Insider Program.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\PreviewBuilds"
+  $result = [ordered]@{
+    AllowBuildPreview      = Read-RegValue $path "AllowBuildPreview"
+    EnableConfigFlighting  = Read-RegValue $path "EnableConfigFlighting"
+    EnableExperimentation  = Read-RegValue $path "EnableExperimentation"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\PreviewBuilds"
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name "AllowBuildPreview" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $path -Name "EnableConfigFlighting" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $path -Name "EnableExperimentation" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\PreviewBuilds"
+  $result = [ordered]@{
+    AllowBuildPreview      = Read-RegValue $path "AllowBuildPreview"
+    EnableConfigFlighting  = Read-RegValue $path "EnableConfigFlighting"
+    EnableExperimentation  = Read-RegValue $path "EnableExperimentation"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: {
+      exists: true,
+      value: { AllowBuildPreview: 0, EnableConfigFlighting: 0, EnableExperimentation: 0 }
+    }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) { Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $val -Force -ErrorAction Stop | Out-Null
+  }
+}
+try {
+  $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\PreviewBuilds"
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue $path "AllowBuildPreview" $snapshotValue.AllowBuildPreview
+    Restore-RegValue $path "EnableConfigFlighting" $snapshotValue.EnableConfigFlighting
+    Restore-RegValue $path "EnableExperimentation" $snapshotValue.EnableExperimentation
+  } else {
+    Remove-ItemProperty -Path $path -Name "AllowBuildPreview" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $path -Name "EnableConfigFlighting" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $path -Name "EnableExperimentation" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-chrome-autoupdate',
+  category: 'Privacidade',
+  title: 'Desativar Atualização Automática do Chrome',
+  description: 'Impede que o Google Chrome se atualize automaticamente em segundo plano.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
+$name = "UpdateDefault"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "UpdateDefault" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "UpdateDefault" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.UpdateDefault } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
+$name = "UpdateDefault"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-edge-autoupdate',
+  category: 'Privacidade',
+  title: 'Desativar Atualização Automática do Edge',
+  description: 'Impede que o Microsoft Edge se atualize automaticamente em segundo plano.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
+$name = "UpdateDefault"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "UpdateDefault" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "UpdateDefault" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.UpdateDefault } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
+$name = "UpdateDefault"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-firefox-autoupdate',
+  category: 'Privacidade',
+  title: 'Desativar Atualização Automática do Firefox',
+  description: 'Impede que o Mozilla Firefox se atualize automaticamente em segundo plano.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
+$name = "DisableAppUpdate"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "DisableAppUpdate" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "DisableAppUpdate" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.DisableAppUpdate } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
+$name = "DisableAppUpdate"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+
 ];
 
 function getPublicCatalog() {

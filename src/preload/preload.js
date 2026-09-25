@@ -12,6 +12,7 @@ const validInvokeChannels = [
   'system-fixer:is-admin',
   'system-fixer:run-repair',
   'system-fixer:check-drive',
+  'system:get-changelog',
 
   // Otimizações
   'tweaks:get-catalog',
@@ -50,6 +51,7 @@ const validInvokeChannels = [
   'settings:set',
   'settings:get-language',
   'settings:set-language',
+  'notifications:show',
 
   // Autenticação
   'auth:validate-license',

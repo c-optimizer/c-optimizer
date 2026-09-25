@@ -17,7 +17,8 @@ const store = new Store({
     settings: {
       language: 'pt-BR',
       startup: false,
-      minimizeTray: true
+      minimizeTray: true,
+      notifications: true
     },
     license: {
       key: null,

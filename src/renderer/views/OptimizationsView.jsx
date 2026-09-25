@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
-  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw
+  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
@@ -17,7 +17,18 @@ const ICON_MAP = {
   'disable-hpet': Timer,
   'disable-mouse-accel': MousePointer2,
   'disable-fullscreen-opt': Maximize,
-  'background-apps': Gauge
+  'background-apps': Gauge,
+  'disable-accessibility-keys': Keyboard,
+  'disable-telemetry-services': Radio,
+  'hide-action-center': Bell,
+  'hide-people-icon': Users,
+  'remove-shortcut-suffix': Link2,
+  'taskbar-transparency': Eye,
+  'explorer-compact-mode': LayoutGrid,
+  'disable-insider': ShieldX,
+  'disable-chrome-autoupdate': Chrome,
+  'disable-edge-autoupdate': Globe,
+  'disable-firefox-autoupdate': Flame
 };
 
 const CATEGORIES = ['Todas', 'Gaming', 'GPU', 'Rede', 'Privacidade', 'Performance'];

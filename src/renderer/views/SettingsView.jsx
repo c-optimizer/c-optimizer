@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Globe, Info, Loader2, ClipboardCopy, CheckCircle2, AlertCircle, ShieldAlert, RotateCcw } from 'lucide-react';
+import { Globe, Info, Loader2, ClipboardCopy, CheckCircle2, AlertCircle, ShieldAlert, RotateCcw, Bell, FileText } from 'lucide-react';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -22,6 +22,13 @@ function SettingsView() {
   const [revertMsg, setRevertMsg] = useState(null);
   const [revertError, setRevertError] = useState(null);
 
+  const [notifications, setNotifications] = useState(true);
+  const [testingNotif, setTestingNotif] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [changelog, setChangelog] = useState([]);
+  const [loadingChangelog, setLoadingChangelog] = useState(false);
+  const [changelogError, setChangelogError] = useState(null);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -31,6 +38,7 @@ function SettingsView() {
         if (isMounted) {
           setStartup(settings.startup);
           setMinimizeTray(settings.minimizeTray);
+          setNotifications(settings.notifications !== false);
           setLoading(false);
         }
       } catch (error) {
@@ -58,6 +66,41 @@ function SettingsView() {
     await window.electronAPI.invoke('settings:set', { minimizeTray: value });
   };
 
+  const handleNotificationsChange = async (value) => {
+    setNotifications(value);
+    await window.electronAPI.invoke('settings:set', { notifications: value });
+  };
+
+  const handleTestNotification = async () => {
+    setTestingNotif(true);
+    try {
+      await window.electronAPI.invoke('notifications:show', {
+        title: 'C-Optimizer',
+        body: 'As notificações estão funcionando corretamente!'
+      });
+    } finally {
+      setTestingNotif(false);
+    }
+  };
+
+  const handleOpenChangelog = async () => {
+    setChangelogOpen(true);
+    setLoadingChangelog(true);
+    setChangelogError(null);
+    try {
+      const result = await window.electronAPI.invoke('system:get-changelog');
+      if (result.success) {
+        setChangelog(result.releases);
+      } else {
+        setChangelogError(result.error);
+      }
+    } catch (error) {
+      setChangelogError(error.message);
+    } finally {
+      setLoadingChangelog(false);
+    }
+  };
+
   const handleCopyLogs = async () => {
     setCopyingLogs(true);
     setCopyMsg(null);
@@ -72,7 +115,6 @@ function SettingsView() {
       setCopyMsg({ type: 'error', text: error.message });
     } finally {
       setCopyingLogs(false);
-      // A mensagem some sozinha depois de alguns segundos, como um toast simples
       setTimeout(() => setCopyMsg(null), 4000);
     }
   };
@@ -152,9 +194,13 @@ function SettingsView() {
           <span className="text-sm text-slate-300">{t('settings.startup')}</span>
           <ToggleSwitch checked={startup} onChange={handleStartupChange} />
         </div>
-        <div className="flex items-center justify-between py-3 last:pb-0">
+        <div className="flex items-center justify-between py-3">
           <span className="text-sm text-slate-300">{t('settings.minimizeTray')}</span>
           <ToggleSwitch checked={minimizeTray} onChange={handleMinimizeTrayChange} />
+        </div>
+        <div className="flex items-center justify-between py-3 last:pb-0">
+          <span className="text-sm text-slate-300">Notificações do sistema</span>
+          <ToggleSwitch checked={notifications} onChange={handleNotificationsChange} />
         </div>
       </div>
 
@@ -189,6 +235,58 @@ function SettingsView() {
           {copyingLogs ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCopy size={14} />}
           {copyingLogs ? 'Copiando...' : 'Copiar Logs de Diagnóstico'}
         </button>
+      </div>
+
+      {/* Notificações */}
+      <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-3">
+        <div className="flex items-center gap-2 text-slate-200 font-semibold">
+          <Bell size={16} className="text-c-secondary" />
+          Notificações
+        </div>
+        <button
+          onClick={handleTestNotification}
+          disabled={testingNotif}
+          className="self-start flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
+        >
+          {testingNotif ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+          Testar Notificação
+        </button>
+      </div>
+
+      {/* Notas de Atualização */}
+      <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-3">
+        <div className="flex items-center gap-2 text-slate-200 font-semibold">
+          <FileText size={16} className="text-c-secondary" />
+          Notas de Atualização
+        </div>
+        <button
+          onClick={handleOpenChangelog}
+          className="self-start flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors"
+        >
+          Ver Changelog
+        </button>
+
+        {changelogOpen && (
+          <div className="mt-2 flex flex-col gap-3 max-h-64 overflow-y-auto">
+            {loadingChangelog && (
+              <div className="flex items-center gap-2 text-slate-500 text-xs">
+                <Loader2 size={14} className="animate-spin" /> Carregando...
+              </div>
+            )}
+            {changelogError && <p className="text-c-danger text-xs">{changelogError}</p>}
+            {changelog.map((release) => (
+              <div key={release.version} className="bg-c-bg border border-c-border rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-200 text-sm font-semibold">{release.name}</span>
+                  <span className="text-slate-500 text-[10px]">
+                    {new Date(release.publishedAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="text-slate-500 text-xs mt-1 whitespace-pre-line line-clamp-4">{release.notes}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Zona de risco: restaurar todas as otimizações */}

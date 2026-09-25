@@ -4,6 +4,7 @@ const os = require('os');
 const { isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
+const { notifyIfEnabled } = require('./notificationHandlers');
 
 let pty;
 try {
@@ -196,6 +197,10 @@ function registerSystemFixerHandlers() {
     try {
       const results = await runFullRepair(window);
       const allSuccess = results.every((r) => r.success);
+      notifyIfEnabled(
+        allSuccess ? 'Reparo concluído' : 'Reparo com falhas',
+        allSuccess ? 'DISM e SFC finalizaram com sucesso.' : 'O reparo terminou com problemas. Verifique o app.'
+      );
       return { success: allSuccess, results };
     } catch (error) {
       log.error('[system-fixer:run-repair]', error);
