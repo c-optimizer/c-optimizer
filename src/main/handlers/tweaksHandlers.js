@@ -1320,7 +1320,136 @@ if ($snapshotExists -eq $true) {
   commands: {
     linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
   }
+},
+  {
+    id: 'disable-accessibility-keys',
+    category: 'Gaming',
+    title: 'Desativar Teclas de Acessibilidade',
+    description: 'Desativa Sticky Keys, Filter Keys e Toggle Keys — atalhos que podem atrapalhar em jogos.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
 }
+
+try {
+function To-IntOrNull($v) {
+  if ($null -eq $v) { return $null }
+  return [int]$v
+}  
+$result = [ordered]@{
+  StickyKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\StickyKeys" "Flags")
+  FilterKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\FilterKeys" "Flags")
+  ToggleKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" "Flags")
+}
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $paths = @{
+    StickyKeys = "HKCU:\\Control Panel\\Accessibility\\StickyKeys"
+    FilterKeys = "HKCU:\\Control Panel\\Accessibility\\FilterKeys"
+    ToggleKeys = "HKCU:\\Control Panel\\Accessibility\\ToggleKeys"
+  }
+  $values = @{ StickyKeys = 506; FilterKeys = 122; ToggleKeys = 58 }
+  foreach ($key in $paths.Keys) {
+    $p = $paths[$key]
+    if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
+    New-ItemProperty -LiteralPath $p -Name "Flags" -PropertyType DWord -Value $values[$key] -Force -ErrorAction Stop | Out-Null
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+
+try {
+  function To-IntOrNull($v) {
+  if ($null -eq $v) { return $null }
+  return [int]$v
+}
+$result = [ordered]@{
+  StickyKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\StickyKeys" "Flags")
+  FilterKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\FilterKeys" "Flags")
+  ToggleKeys = To-IntOrNull (Read-RegValue "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" "Flags")
+}
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success = $true; exists = ($anyExists -gt 0); value = $result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: {
+        exists: true,
+        value: { StickyKeys: 506, FilterKeys: 122, ToggleKeys: 58 }
+      }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Restore-RegValue($path, $name, $val, $propType) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) {
+      Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+    }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType $propType -Value $val -Force -ErrorAction Stop | Out-Null
+  }
+}
+
+try {
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue "HKCU:\\Control Panel\\Accessibility\\StickyKeys" "Flags" $snapshotValue.StickyKeys "DWord"
+    Restore-RegValue "HKCU:\\Control Panel\\Accessibility\\FilterKeys" "Flags" $snapshotValue.FilterKeys "DWord"
+    Restore-RegValue "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" "Flags" $snapshotValue.ToggleKeys "DWord"
+  } else {
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\StickyKeys" -Name "Flags" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\FilterKeys" -Name "Flags" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path "HKCU:\\Control Panel\\Accessibility\\ToggleKeys" -Name "Flags" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
+  }
 ];
 
 function getPublicCatalog() {
