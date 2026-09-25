@@ -1,4 +1,5 @@
 const { ipcMain, BrowserWindow } = require('electron');
+const { spawn } = require('child_process');
 const os = require('os');
 const { isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
@@ -12,21 +13,38 @@ try {
 }
 
 /**
- * Remove sequências de escape ANSI (cores, posicionamento de cursor) que
- * o pseudo-terminal pode incluir na saída — queremos só o texto legível.
+ * Remove sequências de escape do terminal (cores, posicionamento de cursor,
+ * títulos de janela) que o node-pty inclui na saída bruta.
  */
 function stripAnsi(str) {
-  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+  return str
+    // Sequências OSC (ex: título de janela — geravam lixo tipo
+    // "0;C:\WINDOWS\SYSTEM32\cmd.exe" aparecendo como texto visível)
+    .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
+    // Sequências CSI padrão (cores, cursor)
+    .replace(/\x1B(?:[@-Z\\-_]|\[[0-9;?]*[ -/]*[@-~])/g, '');
 }
 
 /**
- * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty,
- * resolvendo a bufferização de saída do Windows. Mas o PTY nasce com o
- * codepage OEM padrão do sistema (ex: 850 em Windows PT-BR) — por isso
- * rodamos 'chcp 65001' DENTRO do próprio terminal, antes do comando real,
- * para forçar UTF-8 na sessão. Diferente de tentar 'chcp' fora de um PTY
- * (que não tem efeito sobre DISM/SFC), aqui funciona porque o processo
- * realmente enxerga um console interativo.
+ * Remove o prefixo de prompt (ex: "C:\Users\Caio\...>") de uma linha
+ * ecoada pelo console, deixando só o texto que foi digitado/enviado.
+ */
+function stripPrompt(line) {
+  const idx = line.lastIndexOf('>');
+  return idx >= 0 ? line.slice(idx + 1).trim() : line.trim();
+}
+
+/**
+ * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty —
+ * necessário porque, fora de um PTY, o Windows bufferiza a saída inteira
+ * desses comandos e só libera tudo no final (nenhuma % aparece em tempo
+ * real). Dentro de um PTY, porém, cada texto que ESCREVEMOS no terminal
+ * é ecoado de volta como se tivesse sido digitado — por isso distinguimos
+ * "linha ecoada do comando que enviamos" de "linha real de saída" usando
+ * uma âncora estrita no marcador de conclusão: a linha ecoada contém o
+ * comando inteiro (com "& echo __COPT_DONE__%errorlevel%" como texto
+ * literal, não resolvido), enquanto a linha real de conclusão é só
+ * "__COPT_DONE__<número>", nada mais.
  */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
@@ -36,10 +54,6 @@ function runSystemCommand(command, args, stepId, window) {
       return resolve({ stepId, success: false, error: msg });
     }
 
-    // cmd.exe como shell interativo do PTY (sem /c) — permanece vivo,
-    // permitindo escrever múltiplos comandos na mesma sessão em vez de
-    // aninhar processos, o que mantém DISM/SFC como filhos diretos do
-    // pseudo-terminal (preserva o flush imediato de progresso).
     const ptyProcess = pty.spawn('cmd.exe', [], {
       name: 'xterm',
       cols: 120,
@@ -48,30 +62,49 @@ function runSystemCommand(command, args, stepId, window) {
       env: process.env
     });
 
+    const MARKER = '__COPT_DONE__';
+    const markerRegex = new RegExp(`^${MARKER}(\\d+)$`);
+    const fullCommand = `${command} ${args.join(' ')} & echo ${MARKER}%errorlevel%`;
+
     let buffer = '';
     let finished = false;
-
-    const MARKER = '__COPT_DONE__';
 
     ptyProcess.onData((data) => {
       buffer += data;
       const parts = buffer.split(/\r\n|\r|\n/);
       buffer = parts.pop();
-      for (const part of parts) {
-        const text = stripAnsi(part).trim();
-        if (!text) continue;
 
-        if (text.includes(MARKER)) {
+      for (const part of parts) {
+        const raw = stripAnsi(part).trim();
+        if (!raw) continue;
+
+        const withoutPrompt = stripPrompt(raw);
+
+        // Linha ecoada do que nós mesmos digitamos (chcp ou o comando
+        // completo) — não é saída real, descarta silenciosamente.
+        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) {
+          continue;
+        }
+
+        // Confirmação de troca de codepage — ruído inofensivo, mas sem
+        // valor para o usuário; também descartamos.
+        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) {
+          continue;
+        }
+
+        // Só bate aqui na linha de saída REAL do echo final, nunca na
+        // linha ecoada do comando (que tem texto extra ao redor do marker).
+        const markerMatch = withoutPrompt.match(markerRegex);
+        if (markerMatch) {
           finished = true;
-          const codeMatch = text.match(new RegExp(`${MARKER}(\\d+)`));
-          const exitCode = codeMatch ? parseInt(codeMatch[1], 10) : 0;
+          const exitCode = parseInt(markerMatch[1], 10);
           ptyProcess.kill();
           resolve({ stepId, success: exitCode === 0, exitCode });
           continue;
         }
 
         if (window && !window.isDestroyed()) {
-          window.webContents.send('system-fixer:progress', { stepId, line: text });
+          window.webContents.send('system-fixer:progress', { stepId, line: raw });
         }
       }
     });
@@ -82,12 +115,9 @@ function runSystemCommand(command, args, stepId, window) {
       }
     });
 
-    // Roda chcp na sessão (sem gerar processo aninhado), depois o comando
-    // real, e ao final imprime um marcador com o código de saída para
-    // sabermos exatamente quando o comando terminou dentro da sessão viva.
     ptyProcess.write('chcp 65001\r');
     setTimeout(() => {
-      ptyProcess.write(`${command} ${args.join(' ')} & echo ${MARKER}%errorlevel%\r`);
+      ptyProcess.write(`${fullCommand}\r`);
     }, 300);
   });
 }
@@ -127,13 +157,13 @@ function runDriveCheck(driveLetter, window) {
       });
     }
 
-    const { spawn } = require('child_process');
     const child = spawn('cmd.exe', ['/c', `chkdsk ${driveLetter}: /f /r`], {
       windowsHide: false,
       stdio: 'ignore'
     });
 
     child.on('close', (code) => {
+      // 0 = sem erros | 1 = erros corrigidos | 2 = agendado para o próximo boot
       const success = code === 0 || code === 1 || code === 2;
       resolve({ stepId: 'chkdsk', success, exitCode: code });
     });

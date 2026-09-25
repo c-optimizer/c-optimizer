@@ -50,8 +50,9 @@
     "extraMetadata": {
       "main": "src/main/main.js"
     },
+    "npmRebuild": false,
     "directories": {
-      "output": "release",
+      "output": "release-v2",
       "buildResources": "build"
     },
     "publish": {
