@@ -11,9 +11,8 @@ try {
   log.error('[system-fixer] node-pty não pôde ser carregado:', err.message);
 }
 
-// Trava simples contra execuções simultâneas do CHKDSK — evita múltiplos
-// processos PTY concorrentes caso o usuário clique "Verificar" várias vezes.
 let chkdskRunning = false;
+let repairRunning = false;
 
 function stripAnsi(str) {
   return str
@@ -21,11 +20,14 @@ function stripAnsi(str) {
     .replace(/\x1B(?:[@-Z\\-_]|\[[0-9;?]*[ -/]*[@-~])/g, '');
 }
 
-function stripPrompt(line) {
-  const idx = line.lastIndexOf('>');
-  return idx >= 0 ? line.slice(idx + 1).trim() : line.trim();
-}
-
+/**
+ * Roda o executável DIRETAMENTE como processo do PTY (não via shell
+ * persistente + marcador de texto). onExit do próprio node-pty já nos dá
+ * o exitCode real, sem precisar "adivinhar" o fim pela saída de texto —
+ * essa era a causa do bug anterior: o marcador de texto podia ser
+ * confundido/detectado cedo demais, resolvendo a Promise enquanto o
+ * DISM/SFC real continuava rodando em segundo plano como processo órfão.
+ */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
     if (!pty) {
@@ -34,60 +36,41 @@ function runSystemCommand(command, args, stepId, window) {
       return resolve({ stepId, success: false, error: msg });
     }
 
-    const ptyProcess = pty.spawn('cmd.exe', [], {
-      name: 'xterm',
-      cols: 120,
-      rows: 30,
-      cwd: process.cwd(),
-      env: process.env
-    });
-
-    const MARKER = '__COPT_DONE__';
-    const markerRegex = new RegExp(`^${MARKER}(\\d+)$`);
-    const fullCommand = `${command} ${args.join(' ')} & echo ${MARKER}%errorlevel%`;
+    let ptyProcess;
+    try {
+      ptyProcess = pty.spawn(command, args, {
+        name: 'xterm',
+        cols: 120,
+        rows: 30,
+        cwd: process.cwd(),
+        env: { ...process.env, DISM_LOG_LEVEL: '4' }
+      });
+    } catch (err) {
+      log.error(`[system-fixer] Falha ao iniciar "${stepId}":`, err.message);
+      return resolve({ stepId, success: false, error: err.message });
+    }
 
     let buffer = '';
-    let finished = false;
+    let settled = false;
 
     ptyProcess.onData((data) => {
       buffer += data;
       const parts = buffer.split(/\r\n|\r|\n/);
       buffer = parts.pop();
-
       for (const part of parts) {
-        const raw = stripAnsi(part).trim();
-        if (!raw) continue;
-
-        const withoutPrompt = stripPrompt(raw);
-
-        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) continue;
-        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) continue;
-
-        const markerMatch = withoutPrompt.match(markerRegex);
-        if (markerMatch) {
-          finished = true;
-          const exitCode = parseInt(markerMatch[1], 10);
-          ptyProcess.kill();
-          resolve({ stepId, success: exitCode === 0, exitCode });
-          continue;
-        }
-
-        if (window && !window.isDestroyed()) {
-          window.webContents.send('system-fixer:progress', { stepId, line: raw });
+        const text = stripAnsi(part).trim();
+        if (text && window && !window.isDestroyed()) {
+          window.webContents.send('system-fixer:progress', { stepId, line: text });
         }
       }
     });
 
     ptyProcess.onExit(({ exitCode }) => {
-      if (!finished) {
-        resolve({ stepId, success: exitCode === 0, exitCode });
-      }
+      if (settled) return;
+      settled = true;
+      log.info(`[system-fixer] "${stepId}" processo real encerrado com código ${exitCode}.`);
+      resolve({ stepId, success: exitCode === 0, exitCode });
     });
-
-    ptyProcess.write('chcp 65001\r');
-    setTimeout(() => {
-      ptyProcess.write(`${fullCommand}\r`);
-    }, 300);
   });
 }
 
@@ -118,9 +101,8 @@ async function runFullRepair(window) {
 }
 
 /**
- * CHKDSK dentro de um pseudo-terminal, com watchdog de inatividade (mata
- * o processo se ficar 30s sem responder — evita processo órfão consumindo
- * CPU indefinidamente) e detecção imediata de "Acesso negado".
+ * CHKDSK como processo direto do PTY. Prompts de confirmação (S/N, Y/N)
+ * são detectados na saída e respondidos automaticamente via ptyProcess.write.
  */
 function runDriveCheck(driveLetter, window) {
   return new Promise((resolve) => {
@@ -137,40 +119,34 @@ function runDriveCheck(driveLetter, window) {
       });
     }
 
-    const ptyProcess = pty.spawn('cmd.exe', [], {
-      name: 'xterm',
-      cols: 120,
-      rows: 30,
-      cwd: process.cwd(),
-      env: process.env
-    });
-
-    const MARKER = '__COPT_CHKDSK_DONE__';
-    const markerRegex = new RegExp(`^${MARKER}(\\d+)$`);
-    const fullCommand = `chkdsk ${driveLetter}: /f /r & echo ${MARKER}%errorlevel%`;
+    let ptyProcess;
+    try {
+      ptyProcess = pty.spawn('chkdsk.exe', [`${driveLetter}:`, '/f', '/r'], {
+        name: 'xterm',
+        cols: 120,
+        rows: 30,
+        cwd: process.cwd(),
+        env: process.env
+      });
+    } catch (err) {
+      log.error('[system-fixer] Falha ao iniciar chkdsk:', err.message);
+      return resolve({ success: false, error: err.message });
+    }
 
     let buffer = '';
-    let finished = false;
+    let settled = false;
     let inactivityTimer = null;
 
     function resetWatchdog() {
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => {
-        if (!finished) {
+        if (!settled) {
           log.error('[system-fixer] CHKDSK sem resposta por 30s — encerrando processo travado.');
-          finished = true;
+          settled = true;
           try { ptyProcess.kill(); } catch { /* já pode ter morrido */ }
-          resolve({ success: false, exitCode: -1, error: 'O processo não respondeu e foi encerrado automaticamente (possível acesso negado silencioso).' });
+          resolve({ success: false, exitCode: -1, error: 'O processo não respondeu e foi encerrado automaticamente.' });
         }
       }, 30000);
-    }
-
-    function finalizeAndKill(result) {
-      if (finished) return;
-      finished = true;
-      if (inactivityTimer) clearTimeout(inactivityTimer);
-      try { ptyProcess.kill(); } catch { /* processo já pode ter saído sozinho */ }
-      resolve(result);
     }
 
     ptyProcess.onData((data) => {
@@ -183,20 +159,13 @@ function runDriveCheck(driveLetter, window) {
         const raw = stripAnsi(part).trim();
         if (!raw) continue;
 
-        const withoutPrompt = stripPrompt(raw);
-
-        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) continue;
-        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) continue;
-
-        const markerMatch = withoutPrompt.match(markerRegex);
-        if (markerMatch) {
-          const exitCode = parseInt(markerMatch[1], 10);
-          finalizeAndKill({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
-          continue;
-        }
-
         if (/acesso negado/i.test(raw) || /access is denied/i.test(raw)) {
-          finalizeAndKill({ success: false, exitCode: -1, error: 'Acesso negado pelo Windows ao tentar verificar a unidade.' });
+          if (!settled) {
+            settled = true;
+            if (inactivityTimer) clearTimeout(inactivityTimer);
+            try { ptyProcess.kill(); } catch { /* ignora */ }
+            resolve({ success: false, exitCode: -1, error: 'Acesso negado pelo Windows ao tentar verificar a unidade.' });
+          }
           continue;
         }
 
@@ -213,14 +182,13 @@ function runDriveCheck(driveLetter, window) {
     });
 
     ptyProcess.onExit(({ exitCode }) => {
-      finalizeAndKill({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
+      if (settled) return;
+      settled = true;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      resolve({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
     });
 
     resetWatchdog();
-    ptyProcess.write('chcp 65001\r');
-    setTimeout(() => {
-      ptyProcess.write(`${fullCommand}\r`);
-    }, 300);
   });
 }
 
@@ -230,6 +198,9 @@ function registerSystemFixerHandlers() {
   });
 
   ipcMain.handle('system-fixer:run-repair', withLicense(async (event) => {
+    if (repairRunning) {
+      return { success: false, error: 'Já existe um reparo em andamento. Aguarde ele terminar.' };
+    }
     if (os.platform() !== 'win32') {
       return { success: false, error: 'Disponível apenas no Windows.' };
     }
@@ -241,6 +212,7 @@ function registerSystemFixerHandlers() {
     }
 
     const window = BrowserWindow.fromWebContents(event.sender);
+    repairRunning = true;
 
     try {
       const results = await runFullRepair(window);
@@ -249,6 +221,8 @@ function registerSystemFixerHandlers() {
     } catch (error) {
       log.error('[system-fixer:run-repair]', error);
       return { success: false, error: 'Falha ao executar o reparo de sistema.' };
+    } finally {
+      repairRunning = false;
     }
   }));
 
