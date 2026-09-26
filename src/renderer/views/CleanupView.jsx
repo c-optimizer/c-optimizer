@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
   ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw,
-  Keyboard, Radio, Bell, Users, Link2, Eye, LayoutGrid, ShieldX, Chrome, Globe, Flame,
+  Keyboard, Radio, Bell, Users, Link2, Eye, LayoutGrid, ShieldX, Chrome, Globe, Flame, Trash, Trash2,
   Zap, RadioTower // dois novos, só para desduplicar abaixo
 } from 'lucide-react';
 import CardOption from '../components/CardOption';

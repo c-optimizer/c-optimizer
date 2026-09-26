@@ -11,6 +11,10 @@ try {
   log.error('[system-fixer] node-pty não pôde ser carregado:', err.message);
 }
 
+// Trava simples contra execuções simultâneas do CHKDSK — evita múltiplos
+// processos PTY concorrentes caso o usuário clique "Verificar" várias vezes.
+let chkdskRunning = false;
+
 function stripAnsi(str) {
   return str
     .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
@@ -114,12 +118,9 @@ async function runFullRepair(window) {
 }
 
 /**
- * CHKDSK dentro de um pseudo-terminal (mesma técnica do DISM/SFC).
- * Diferente de tentar abrir uma janela externa (que se mostrou pouco
- * confiável em testes reais — nem sempre aparece, dependendo da versão
- * do Windows), aqui o próprio app detecta e responde automaticamente
- * a qualquer prompt de confirmação (S/N em português, Y/N em inglês),
- * sem depender de interação externa do usuário.
+ * CHKDSK dentro de um pseudo-terminal, com watchdog de inatividade (mata
+ * o processo se ficar 30s sem responder — evita processo órfão consumindo
+ * CPU indefinidamente) e detecção imediata de "Acesso negado".
  */
 function runDriveCheck(driveLetter, window) {
   return new Promise((resolve) => {
@@ -150,8 +151,30 @@ function runDriveCheck(driveLetter, window) {
 
     let buffer = '';
     let finished = false;
+    let inactivityTimer = null;
+
+    function resetWatchdog() {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        if (!finished) {
+          log.error('[system-fixer] CHKDSK sem resposta por 30s — encerrando processo travado.');
+          finished = true;
+          try { ptyProcess.kill(); } catch { /* já pode ter morrido */ }
+          resolve({ success: false, exitCode: -1, error: 'O processo não respondeu e foi encerrado automaticamente (possível acesso negado silencioso).' });
+        }
+      }, 30000);
+    }
+
+    function finalizeAndKill(result) {
+      if (finished) return;
+      finished = true;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      try { ptyProcess.kill(); } catch { /* processo já pode ter saído sozinho */ }
+      resolve(result);
+    }
 
     ptyProcess.onData((data) => {
+      resetWatchdog();
       buffer += data;
       const parts = buffer.split(/\r\n|\r|\n/);
       buffer = parts.pop();
@@ -167,16 +190,16 @@ function runDriveCheck(driveLetter, window) {
 
         const markerMatch = withoutPrompt.match(markerRegex);
         if (markerMatch) {
-          finished = true;
           const exitCode = parseInt(markerMatch[1], 10);
-          ptyProcess.kill();
-          resolve({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
+          finalizeAndKill({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
           continue;
         }
 
-        // Detecta prompts do tipo "(S/N)" ou "(Y/N)" e responde com a
-        // primeira letra automaticamente (sem isso, o CHKDSK aborta com
-        // "não foi possível bloquear a unidade" em vez de agendar).
+        if (/acesso negado/i.test(raw) || /access is denied/i.test(raw)) {
+          finalizeAndKill({ success: false, exitCode: -1, error: 'Acesso negado pelo Windows ao tentar verificar a unidade.' });
+          continue;
+        }
+
         const promptMatch = raw.match(/\(([A-Za-z])\/([A-Za-z])\)\s*\??\s*$/);
         if (promptMatch) {
           ptyProcess.write(promptMatch[1] + '\r');
@@ -190,11 +213,10 @@ function runDriveCheck(driveLetter, window) {
     });
 
     ptyProcess.onExit(({ exitCode }) => {
-      if (!finished) {
-        resolve({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
-      }
+      finalizeAndKill({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
     });
 
+    resetWatchdog();
     ptyProcess.write('chcp 65001\r');
     setTimeout(() => {
       ptyProcess.write(`${fullCommand}\r`);
@@ -231,6 +253,9 @@ function registerSystemFixerHandlers() {
   }));
 
   ipcMain.handle('system-fixer:check-drive', withLicense(async (event, driveLetter) => {
+    if (chkdskRunning) {
+      return { success: false, error: 'Já existe uma verificação em andamento. Aguarde ela terminar.' };
+    }
     if (os.platform() !== 'win32') {
       return { success: false, error: 'Disponível apenas no Windows.' };
     }
@@ -245,16 +270,19 @@ function registerSystemFixerHandlers() {
     }
 
     const window = BrowserWindow.fromWebContents(event.sender);
+    chkdskRunning = true;
 
     try {
       const result = await runDriveCheck(driveLetter, window);
       if (!result.success) {
-        return { success: false, error: `CHKDSK retornou código ${result.exitCode} (falha ao verificar/reparar).` };
+        return { success: false, error: result.error || `CHKDSK retornou código ${result.exitCode} (falha ao verificar/reparar).` };
       }
       return { success: true, exitCode: result.exitCode };
     } catch (error) {
       log.error('[system-fixer:check-drive]', error);
       return { success: false, error: 'Falha ao verificar a unidade.' };
+    } finally {
+      chkdskRunning = false;
     }
   }));
 }
