@@ -109,22 +109,34 @@ function RestoreView() {
   };
 
   const handleCreate = async () => {
-    setCreating(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    try {
-      const result = await window.electronAPI.invoke('restore:create-point', 'Backup de Segurança - C-Optimizer');
-      if (result.success) {
-        setSuccessMsg('Ponto de restauração criado com sucesso!');
-        await loadPoints();
+  setCreating(true);
+  setErrorMsg(null);
+  setSuccessMsg(null);
+  try {
+    const result = await window.electronAPI.invoke('restore:create-point', 'Backup de Seguranca - C-Optimizer');
+    if (result.success) {
+      setSuccessMsg('Ponto de restauração criado com sucesso!');
+
+      // Usa a listagem elevada diretamente após criar: a consulta normal
+      // pode não refletir o ponto recém-criado em algumas configurações
+      // do Windows (mesma limitação do botão "Verificar com permissão
+      // de administrador"). Como a criação já passou por elevação, isso
+      // normalmente não gera um novo prompt perceptível de UAC.
+      const listResult = await window.electronAPI.invoke('restore:list-points-elevated');
+      if (listResult.success) {
+        setPoints(listResult.points);
+        setProtectionAvailable(true);
       } else {
-        setErrorMsg(result.error);
+        await loadPoints();
       }
-    } catch (error) {
-      setErrorMsg(error.message);
-    } finally {
-      setCreating(false);
+    } else {
+      setErrorMsg(result.error);
     }
+  } catch (error) {
+    setErrorMsg(error.message);
+  } finally {
+    setCreating(false);
+  }
   };
 
   // Fallback: em alguns ambientes Windows, a consulta de pontos de restauração

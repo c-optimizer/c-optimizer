@@ -5,6 +5,7 @@ const os = require('os');
 const { runShellCommand, runCommandSmart } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const store = require('../store');
+const { log } = require('../utils/logger');
 
 async function clearDirectoryContents(dirPath) {
   let freedBytes = 0;
@@ -268,7 +269,7 @@ function registerCleanupHandlers() {
         totalFreedBytes += freedBytes || 0;
         results[targetId] = { success: true, freedBytes, skippedCount, unmeasured: !!unmeasured };
       } catch (error) {
-        console.error(`[cleanup:execute] Erro ao limpar "${targetId}":`, error.message);
+        log.error(`[cleanup:execute] Erro ao limpar "${targetId}":`, error.message);
         results[targetId] = { success: false, error: error.message };
         hadError = true;
       }

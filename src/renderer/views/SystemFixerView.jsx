@@ -194,8 +194,9 @@ function SystemFixerView() {
           <h3 className="text-slate-200 font-semibold text-sm">Verificação de Erros no Disco (CHKDSK)</h3>
         </div>
         <p className="text-slate-500 text-xs -mt-2">
-          Verifica e corrige erros no sistema de arquivos. Uma janela do Windows será aberta —
-          se solicitado, responda diretamente nela. Unidades em uso (como C:) são agendadas para o próximo reinício.
+          Verifica e corrige erros no sistema de arquivos. O processo roda dentro do próprio app —
+          qualquer confirmação necessária é respondida automaticamente. Unidades em uso (como C:) geralmente
+          exigem reinicialização para concluir a verificação.
         </p>
 
         {driveResult && <p className="text-c-primary text-xs">{driveResult}</p>}

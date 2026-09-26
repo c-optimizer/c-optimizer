@@ -50,6 +50,12 @@
     "extraMetadata": {
       "main": "src/main/main.js"
     },
+    "extraResources": [
+  {
+    "from": "build/icon.ico",
+    "to": "trayIcon.ico"
+  }
+],
     "npmRebuild": false,
     "directories": {
       "output": "release",

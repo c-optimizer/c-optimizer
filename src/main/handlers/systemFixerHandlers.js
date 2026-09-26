@@ -1,10 +1,8 @@
 const { ipcMain, BrowserWindow } = require('electron');
-const { spawn } = require('child_process');
 const os = require('os');
 const { isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
-const { notifyIfEnabled } = require('./notificationHandlers');
 
 let pty;
 try {
@@ -13,40 +11,17 @@ try {
   log.error('[system-fixer] node-pty não pôde ser carregado:', err.message);
 }
 
-/**
- * Remove sequências de escape do terminal (cores, posicionamento de cursor,
- * títulos de janela) que o node-pty inclui na saída bruta.
- */
 function stripAnsi(str) {
   return str
-    // Sequências OSC (ex: título de janela — geravam lixo tipo
-    // "0;C:\WINDOWS\SYSTEM32\cmd.exe" aparecendo como texto visível)
     .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
-    // Sequências CSI padrão (cores, cursor)
     .replace(/\x1B(?:[@-Z\\-_]|\[[0-9;?]*[ -/]*[@-~])/g, '');
 }
 
-/**
- * Remove o prefixo de prompt (ex: "C:\Users\Caio\...>") de uma linha
- * ecoada pelo console, deixando só o texto que foi digitado/enviado.
- */
 function stripPrompt(line) {
   const idx = line.lastIndexOf('>');
   return idx >= 0 ? line.slice(idx + 1).trim() : line.trim();
 }
 
-/**
- * Roda DISM ou SFC dentro de um pseudo-terminal (PTY) real via node-pty —
- * necessário porque, fora de um PTY, o Windows bufferiza a saída inteira
- * desses comandos e só libera tudo no final (nenhuma % aparece em tempo
- * real). Dentro de um PTY, porém, cada texto que ESCREVEMOS no terminal
- * é ecoado de volta como se tivesse sido digitado — por isso distinguimos
- * "linha ecoada do comando que enviamos" de "linha real de saída" usando
- * uma âncora estrita no marcador de conclusão: a linha ecoada contém o
- * comando inteiro (com "& echo __COPT_DONE__%errorlevel%" como texto
- * literal, não resolvido), enquanto a linha real de conclusão é só
- * "__COPT_DONE__<número>", nada mais.
- */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
     if (!pty) {
@@ -81,20 +56,9 @@ function runSystemCommand(command, args, stepId, window) {
 
         const withoutPrompt = stripPrompt(raw);
 
-        // Linha ecoada do que nós mesmos digitamos (chcp ou o comando
-        // completo) — não é saída real, descarta silenciosamente.
-        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) {
-          continue;
-        }
+        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) continue;
+        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) continue;
 
-        // Confirmação de troca de codepage — ruído inofensivo, mas sem
-        // valor para o usuário; também descartamos.
-        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) {
-          continue;
-        }
-
-        // Só bate aqui na linha de saída REAL do echo final, nunca na
-        // linha ecoada do comando (que tem texto extra ao redor do marker).
         const markerMatch = withoutPrompt.match(markerRegex);
         if (markerMatch) {
           finished = true;
@@ -149,30 +113,92 @@ async function runFullRepair(window) {
   return results;
 }
 
+/**
+ * CHKDSK dentro de um pseudo-terminal (mesma técnica do DISM/SFC).
+ * Diferente de tentar abrir uma janela externa (que se mostrou pouco
+ * confiável em testes reais — nem sempre aparece, dependendo da versão
+ * do Windows), aqui o próprio app detecta e responde automaticamente
+ * a qualquer prompt de confirmação (S/N em português, Y/N em inglês),
+ * sem depender de interação externa do usuário.
+ */
 function runDriveCheck(driveLetter, window) {
   return new Promise((resolve) => {
+    if (!pty) {
+      const msg = 'Módulo de terminal (node-pty) não disponível nesta instalação.';
+      log.error(`[system-fixer] ${msg}`);
+      return resolve({ success: false, error: msg });
+    }
+
     if (window && !window.isDestroyed()) {
       window.webContents.send('system-fixer:progress', {
         stepId: 'chkdsk',
-        line: 'Uma janela do Windows foi aberta para o CHKDSK. Se solicitado, responda diretamente nela (S/Y para confirmar).'
+        line: 'Iniciando verificação da unidade — pode demorar bastante em discos grandes.'
       });
     }
 
-    const child = spawn('cmd.exe', ['/c', `chkdsk ${driveLetter}: /f /r`], {
-      windowsHide: false,
-      stdio: 'ignore'
+    const ptyProcess = pty.spawn('cmd.exe', [], {
+      name: 'xterm',
+      cols: 120,
+      rows: 30,
+      cwd: process.cwd(),
+      env: process.env
     });
 
-    child.on('close', (code) => {
-      // 0 = sem erros | 1 = erros corrigidos | 2 = agendado para o próximo boot
-      const success = code === 0 || code === 1 || code === 2;
-      resolve({ stepId: 'chkdsk', success, exitCode: code });
+    const MARKER = '__COPT_CHKDSK_DONE__';
+    const markerRegex = new RegExp(`^${MARKER}(\\d+)$`);
+    const fullCommand = `chkdsk ${driveLetter}: /f /r & echo ${MARKER}%errorlevel%`;
+
+    let buffer = '';
+    let finished = false;
+
+    ptyProcess.onData((data) => {
+      buffer += data;
+      const parts = buffer.split(/\r\n|\r|\n/);
+      buffer = parts.pop();
+
+      for (const part of parts) {
+        const raw = stripAnsi(part).trim();
+        if (!raw) continue;
+
+        const withoutPrompt = stripPrompt(raw);
+
+        if (withoutPrompt === 'chcp 65001' || withoutPrompt === fullCommand) continue;
+        if (/^Página de código ativa: \d+$/i.test(withoutPrompt) || /^Active code page: \d+$/i.test(withoutPrompt)) continue;
+
+        const markerMatch = withoutPrompt.match(markerRegex);
+        if (markerMatch) {
+          finished = true;
+          const exitCode = parseInt(markerMatch[1], 10);
+          ptyProcess.kill();
+          resolve({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
+          continue;
+        }
+
+        // Detecta prompts do tipo "(S/N)" ou "(Y/N)" e responde com a
+        // primeira letra automaticamente (sem isso, o CHKDSK aborta com
+        // "não foi possível bloquear a unidade" em vez de agendar).
+        const promptMatch = raw.match(/\(([A-Za-z])\/([A-Za-z])\)\s*\??\s*$/);
+        if (promptMatch) {
+          ptyProcess.write(promptMatch[1] + '\r');
+          continue;
+        }
+
+        if (window && !window.isDestroyed()) {
+          window.webContents.send('system-fixer:progress', { stepId: 'chkdsk', line: raw });
+        }
+      }
     });
 
-    child.on('error', (err) => {
-      log.error('[system-fixer] Erro no chkdsk:', err.message);
-      resolve({ stepId: 'chkdsk', success: false, error: err.message });
+    ptyProcess.onExit(({ exitCode }) => {
+      if (!finished) {
+        resolve({ success: exitCode === 0 || exitCode === 1 || exitCode === 2, exitCode });
+      }
     });
+
+    ptyProcess.write('chcp 65001\r');
+    setTimeout(() => {
+      ptyProcess.write(`${fullCommand}\r`);
+    }, 300);
   });
 }
 
@@ -197,10 +223,6 @@ function registerSystemFixerHandlers() {
     try {
       const results = await runFullRepair(window);
       const allSuccess = results.every((r) => r.success);
-      notifyIfEnabled(
-        allSuccess ? 'Reparo concluído' : 'Reparo com falhas',
-        allSuccess ? 'DISM e SFC finalizaram com sucesso.' : 'O reparo terminou com problemas. Verifique o app.'
-      );
       return { success: allSuccess, results };
     } catch (error) {
       log.error('[system-fixer:run-repair]', error);

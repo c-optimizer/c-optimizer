@@ -2,6 +2,7 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runCommandSmart, runElevatedScriptWithOutput } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
+const { log } = require('../utils/logger');
 
 function parseWmiDate(wmiDateStr) {
   if (!wmiDateStr || typeof wmiDateStr !== 'string') return new Date().toISOString();
@@ -37,6 +38,19 @@ function formatPoints(rawPoints) {
   return formatted;
 }
 
+/**
+ * Remove acentos/diacríticos. Necessário porque a API do Windows que
+ * grava a descrição de pontos de restauração (Checkpoint-Computer) usa
+ * internamente rotinas antigas baseadas em ANSI em algumas versões do
+ * Windows (builds mais antigas do Windows 10 confirmadas em teste real) —
+ * isso corrompe caracteres acentuados DEPOIS que nosso script já entrega
+ * o texto correto, então a única correção confiável é evitar acentos na
+ * descrição, garantindo compatibilidade em qualquer versão do Windows.
+ */
+function toAsciiSafe(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 async function listRestorePoints() {
   const script = `Get-ComputerRestorePoint | Select-Object SequenceNumber, Description, CreationTime, RestorePointType | ConvertTo-Json -Compress`;
   const { stdout } = await runShellCommand(script, 20000);
@@ -57,26 +71,33 @@ $__resultJson = $points | ConvertTo-Json -Compress
   return formatPoints(rawPoints);
 }
 
-async function createRestorePoint(description = 'Backup de Segurança - C-Optimizer') {
-  if (os.platform() !== 'win32') return { success: false, error: 'Disponível apenas no Windows.' };
+async function createRestorePoint(description = 'Backup de Seguranca - C-Optimizer') {
+  if (os.platform() !== 'win32') {
+    return { success: false, error: 'Disponível apenas no Windows.' };
+  }
 
-  const script = `Checkpoint-Computer -Description '${description.replace(/'/g, "''")}' -RestorePointType 'MODIFY_SETTINGS'`;
+  const safeDescription = toAsciiSafe(description).replace(/'/g, "''");
+  const script = `Checkpoint-Computer -Description '${safeDescription}' -RestorePointType 'MODIFY_SETTINGS'`;
 
   try {
     await runCommandSmart(script, true, 60000);
     return { success: true };
   } catch (error) {
-    console.error('[restore:create-point] Erro:', error.message);
+    log.error('[restore:create-point] Erro:', error.message);
     const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
     return {
       success: false,
-      error: userCancelled ? 'Permissão de administrador cancelada.' : 'Não foi possível criar o ponto de restauração.'
+      error: userCancelled
+        ? 'Permissão de administrador cancelada.'
+        : 'Não foi possível criar o ponto de restauração.'
     };
   }
 }
 
 async function enableSystemRestore() {
-  if (os.platform() !== 'win32') return { success: false, error: 'Disponível apenas no Windows.' };
+  if (os.platform() !== 'win32') {
+    return { success: false, error: 'Disponível apenas no Windows.' };
+  }
 
   const script = `Enable-ComputerRestore -Drive 'C:\\'`;
 
@@ -84,33 +105,38 @@ async function enableSystemRestore() {
     await runCommandSmart(script, true, 30000);
     return { success: true };
   } catch (error) {
-    console.error('[restore:enable-protection] Erro:', error.message);
+    log.error('[restore:enable-protection] Erro:', error.message);
     return { success: false, error: 'Falha ao ativar a Proteção do Sistema.' };
   }
 }
 
 function registerRestoreHandlers() {
   ipcMain.handle('restore:list-points', async () => {
-    if (os.platform() !== 'win32') return { success: false, points: [], error: 'Disponível apenas no Windows.' };
+    if (os.platform() !== 'win32') {
+      return { success: false, points: [], error: 'Pontos de restauração disponíveis apenas no Windows.' };
+    }
     try {
       const points = await listRestorePoints();
       return { success: true, points };
     } catch (error) {
-      console.error('[restore:list-points] Erro:', error.message);
+      log.error('[restore:list-points] Erro:', error.message);
       return { success: false, points: [], error: 'Não foi possível carregar os pontos de restauração.' };
     }
   });
 
   ipcMain.handle('restore:list-points-elevated', async () => {
-    if (os.platform() !== 'win32') return { success: false, points: [], error: 'Disponível apenas no Windows.' };
+    if (os.platform() !== 'win32') {
+      return { success: false, points: [], error: 'Disponível apenas no Windows.' };
+    }
     try {
       const points = await listRestorePointsElevated();
       return { success: true, points };
     } catch (error) {
-      console.error('[restore:list-points-elevated] Erro:', error.message);
+      log.error('[restore:list-points-elevated] Erro:', error.message);
       const userCancelled = error.message.includes('cancelado') || error.message.includes('Código:');
       return {
-        success: false, points: [],
+        success: false,
+        points: [],
         error: userCancelled
           ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
           : 'Não foi possível carregar os pontos de restauração mesmo com permissão elevada.'

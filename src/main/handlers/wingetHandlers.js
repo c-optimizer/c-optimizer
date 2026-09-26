@@ -2,6 +2,7 @@ const { ipcMain, BrowserWindow } = require('electron');
 const { spawn, execSync } = require('child_process');
 const os = require('os');
 const { withLicense } = require('../utils/licenseGuard');
+const { log } = require('../utils/logger');
 
 const WINGET_CATALOG = [
   { id: 'Microsoft.VCRedist.2015+.x64', name: 'Visual C++ Redistributable (x64)', category: 'Runtimes' },
@@ -46,7 +47,10 @@ function installApp(appId, window) {
       else resolve({ appId, success: false, error: `winget saiu com código ${code}` });
     });
 
-    child.on('error', (err) => resolve({ appId, success: false, error: err.message }));
+    child.on('error', (err) => {
+      log.error(`[winget] Erro ao instalar "${appId}":`, err.message);
+      resolve({ appId, success: false, error: err.message });
+});
   });
 }
 
@@ -62,8 +66,9 @@ function registerWingetHandlers() {
     if (!Array.isArray(appIds) || appIds.length === 0) return { success: false, error: 'Nenhum aplicativo selecionado.' };
     if (os.platform() !== 'win32') return { success: false, error: 'Disponível apenas no Windows.' };
     if (!isWingetAvailable()) {
-      return { success: false, error: 'winget não foi encontrado no PATH deste sistema. Atualize o App Installer pela Microsoft Store.' };
-    }
+  log.error('[winget:install] winget não encontrado no PATH.');
+  return { success: false, error: 'winget não foi encontrado no PATH deste sistema. Atualize o App Installer pela Microsoft Store.' };
+  }
 
     const window = BrowserWindow.fromWebContents(event.sender);
     const results = [];

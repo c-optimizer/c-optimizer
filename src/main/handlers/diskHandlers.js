@@ -2,6 +2,7 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runCommandSmart } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
+const { log } = require('../utils/logger');
 
 function mapMediaType(raw) {
   const value = String(raw).toUpperCase();
@@ -46,7 +47,7 @@ function registerDiskHandlers() {
       const volumes = await listVolumes();
       return { success: true, volumes };
     } catch (error) {
-      console.error('[disk:list-volumes] Erro:', error.message);
+      log.error('[disk:list-volumes] Erro:', error.message);
       return { success: false, volumes: [], error: 'Não foi possível listar os discos.' };
     }
   });
@@ -57,7 +58,7 @@ function registerDiskHandlers() {
       await optimizeDrive(driveLetter, type);
       return { success: true };
     } catch (error) {
-      console.error('[disk:optimize] Erro:', error.message);
+      log.error('[disk:optimize] Erro:', error.message);
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false,

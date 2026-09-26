@@ -1,22 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Folder, Zap, Trash, RefreshCw, Trash2, Loader2, AlertCircle, CheckCircle2,
-  MessageSquare, Gamepad2, FileWarning, Image, Clock, Type
+  Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
+  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw,
+  Keyboard, Radio, Bell, Users, Link2, Eye, LayoutGrid, ShieldX, Chrome, Globe, Flame,
+  Zap, RadioTower // dois novos, só para desduplicar abaixo
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
 
 const ICON_MAP = {
-  temp: Folder,
-  prefetch: Zap,
-  'recycle-bin': Trash,
-  'wu-cache': RefreshCw,
-  'discord-cache': MessageSquare,
-  'steam-cache': Gamepad2,
-  'log-crash': FileWarning,
-  'thumbnail-cache': Image,
-  'recent-docs': Clock,
-  'font-cache': Type
+  // Gaming
+  'gaming-priority': Gamepad2,
+  'disable-mouse-accel': MousePointer2,
+  'disable-fullscreen-opt': Maximize,
+  'disable-accessibility-keys': Keyboard,
+
+  // GPU
+  'gpu-scheduling': CircuitBoard,
+
+  // Rede
+  'network-nagle': Network,
+  'network-throttling': RadioTower, // antes era Network, duplicado com nagle
+
+  // Privacidade
+  'disable-telemetry': ShieldOff,
+  'disable-telemetry-services': Radio,
+  'disable-insider': ShieldX,
+  'disable-chrome-autoupdate': Chrome,
+  'disable-edge-autoupdate': Globe,
+  'disable-firefox-autoupdate': Flame,
+
+  // Performance
+  'power-plan': Zap, // antes era Gauge, duplicado com background-apps
+  'background-apps': Gauge,
+  'visual-performance': Sparkles,
+  'disable-hpet': Timer,
+  'hide-action-center': Bell,
+  'hide-people-icon': Users,
+  'remove-shortcut-suffix': Link2,
+  'taskbar-transparency': Eye,
+  'explorer-compact-mode': LayoutGrid
 };
 
 const DESCRIPTION_MAP = {

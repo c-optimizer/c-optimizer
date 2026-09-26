@@ -105,8 +105,7 @@ function createWindow() {
     log.info('Janela principal fechada.');
     mainWindow = null;
   });
-  const iconPath = path.join(__dirname, '../../build/icon.ico');
-  setupTray(mainWindow, iconPath);
+ setupTray(mainWindow);
 }
 
 app.whenReady().then(() => {

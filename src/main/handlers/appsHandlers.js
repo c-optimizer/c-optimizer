@@ -2,6 +2,7 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { runShellCommand, runElevatedScriptWithOutput, isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
+const { log } = require('../utils/logger');
 
 const BLOATWARE_CATALOG = [
   { match: 'Microsoft.XboxGamingOverlay', label: 'Xbox Game Bar' },
@@ -60,6 +61,9 @@ function translateUninstallError(rawError) {
   const msg = rawError.toLowerCase();
   if (msg.includes('0x80073cf0') || msg.includes('cannot be uninstalled')) {
     return 'Este é um componente protegido do Windows e não pode ser removido por este método.';
+  }
+  if (msg.includes('0x80070002')) {
+    return 'Este aplicativo está em um estado inconsistente no Windows (arquivos de implantação ausentes) e não pode ser removido por este método. É uma limitação conhecida do Windows, especialmente com a Cortana em algumas versões do Windows 10.';
   }
   if (msg.includes('0x80073d02') || msg.includes('in use')) {
     return 'O aplicativo está em uso no momento. Feche-o e tente novamente.';
@@ -127,7 +131,7 @@ function registerAppsHandlers() {
       const apps = await listInstalledBloatware();
       return { success: true, apps };
     } catch (error) {
-      console.error('[apps:list-installed] Erro:', error.message);
+      log.error('[apps:list-installed] Erro:', error.message);
       return { success: false, apps: [], error: 'Não foi possível listar os aplicativos instalados.' };
     }
   });
@@ -151,7 +155,7 @@ function registerAppsHandlers() {
         failed: failed.map((f) => ({ id: f.Package, error: translateUninstallError(f.Error) }))
       };
     } catch (error) {
-      console.error('[apps:uninstall-batch] Erro:', error.message);
+      log.error('[apps:uninstall-batch] Erro:', error.message);
       const userCancelled = error.message.includes('cancelado') || error.message.includes('Código: 1');
       return {
         success: false,
