@@ -148,19 +148,36 @@ function registerSystemHandlers() {
 }
 
 function startStatsStreaming() {
-  if (statsIntervalHandle) clearInterval(statsIntervalHandle);
-  statsIntervalHandle = setInterval(async () => {
+  if (statsIntervalHandle) {
+    clearTimeout(statsIntervalHandle);
+  }
+
+  async function tick() {
     const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
-    if (!win || win.isDestroyed()) return;
-    try {
-      const stats = await collectStats();
-      win.webContents.send('system:stats-update', stats);
-    } catch (e) { log.error('[stats-update]', e); }
-  }, STATS_INTERVAL_MS);
+
+    if (win && !win.isDestroyed()) {
+      try {
+        const stats = await collectStats();
+        win.webContents.send('system:stats-update', stats);
+      } catch (e) {
+        log.error('[stats-update]', e);
+      }
+    }
+
+    // Só agenda o PRÓXIMO ciclo depois que o atual terminou de verdade —
+    // elimina a possibilidade de chamadas empilhando/concorrendo entre si,
+    // que era o que gerava a explosão de processos PowerShell.
+    statsIntervalHandle = setTimeout(tick, STATS_INTERVAL_MS);
+  }
+
+  tick();
 }
 
 function stopStatsStreaming() {
-  if (statsIntervalHandle) { clearInterval(statsIntervalHandle); statsIntervalHandle = null; }
+  if (statsIntervalHandle) {
+    clearTimeout(statsIntervalHandle);
+    statsIntervalHandle = null;
+  }
 }
 
 module.exports = { registerSystemHandlers, stopStatsStreaming };
