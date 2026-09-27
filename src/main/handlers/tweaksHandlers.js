@@ -2117,6 +2117,363 @@ if ($snapshotExists -eq $true) {
   },
   commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
 },
+{
+  id: 'disable-core-isolation',
+  category: 'Gaming',
+  title: 'Desativar Isolamento do Núcleo (VBS)',
+  description: 'Desabilita a Integridade da Memória (Virtualization-Based Security), reduzindo overhead do sistema para mais FPS em jogos.',
+  risk: 'medium',
+  requiresAdmin: true,
+  createsBackup: true,
+  requiresReboot: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+$name = "Enabled"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "Enabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "Enabled" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.Enabled } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
+$name = "Enabled"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'optimize-windowed-games',
+  category: 'Gaming',
+  title: 'Otimizar Jogos em Janela (Beta)',
+  description: 'Habilita apresentação moderna do DWM para reduzir latência em jogos executados em janela sem borda.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+$name = "DirectXUserGlobalSettings"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "DirectXUserGlobalSettings" -PropertyType String -Value "SwapEffectUpgradeEnable=1;" -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "DirectXUserGlobalSettings" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.DirectXUserGlobalSettings } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 'SwapEffectUpgradeEnable=1;' }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
+$name = "DirectXUserGlobalSettings"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType String -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'menu-show-delay',
+  category: 'Performance',
+  title: 'Eliminar Atraso de Menus',
+  description: 'Faz submenus abrirem instantaneamente, removendo o atraso padrão de 400ms do Windows.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Control Panel\\Desktop"
+$name = "MenuShowDelay"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Control Panel\\Desktop"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "MenuShowDelay" -PropertyType String -Value "0" -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Control Panel\\Desktop"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "MenuShowDelay" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.MenuShowDelay } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: '0' }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Control Panel\\Desktop"
+$name = "MenuShowDelay"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType String -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'enable-end-task',
+  category: 'Performance',
+  title: 'Habilitar "Finalizar Tarefa" na Barra de Tarefas',
+  description: 'Permite encerrar processos travados clicando com o botão direito diretamente na barra de tarefas, sem abrir o Gerenciador de Tarefas.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+$name = "TaskbarEndTask"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "TaskbarEndTask" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "TaskbarEndTask" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.TaskbarEndTask } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
+$name = "TaskbarEndTask"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'dark-mode',
+  category: 'Performance',
+  title: 'Ativar Modo Escuro',
+  description: 'Aplica o tema escuro nos aplicativos e no sistema.',
+  risk: 'low',
+  requiresAdmin: false,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+  $result = [ordered]@{
+    AppsUseLightTheme   = Read-RegValue $path "AppsUseLightTheme"
+    SystemUsesLightTheme = Read-RegValue $path "SystemUsesLightTheme"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name "AppsUseLightTheme" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $path -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+  $result = [ordered]@{
+    AppsUseLightTheme   = Read-RegValue $path "AppsUseLightTheme"
+    SystemUsesLightTheme = Read-RegValue $path "SystemUsesLightTheme"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: { AppsUseLightTheme: 0, SystemUsesLightTheme: 0 } }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) { Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $val -Force -ErrorAction Stop | Out-Null
+  }
+}
+try {
+  $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue $path "AppsUseLightTheme" $snapshotValue.AppsUseLightTheme
+    Restore-RegValue $path "SystemUsesLightTheme" $snapshotValue.SystemUsesLightTheme
+  } else {
+    Remove-ItemProperty -Path $path -Name "AppsUseLightTheme" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $path -Name "SystemUsesLightTheme" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
 
 ];
 

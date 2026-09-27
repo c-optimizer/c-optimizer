@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
-  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame
+  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame, ShieldHalf, AppWindow, ListChecks, XSquare, Moon
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
@@ -28,7 +28,12 @@ const ICON_MAP = {
   'disable-insider': ShieldX,
   'disable-chrome-autoupdate': Chrome,
   'disable-edge-autoupdate': Globe,
-  'disable-firefox-autoupdate': Flame
+  'disable-firefox-autoupdate': Flame,
+  'disable-core-isolation': ShieldHalf,
+  'optimize-windowed-games': AppWindow,
+  'menu-show-delay': ListChecks,
+  'enable-end-task': XSquare,
+  'dark-mode': Moon
 };
 
 const CATEGORIES = ['Todas', 'Gaming', 'GPU', 'Rede', 'Privacidade', 'Performance'];
