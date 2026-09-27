@@ -63,7 +63,7 @@ function translateUninstallError(rawError) {
     return 'Este é um componente protegido do Windows e não pode ser removido por este método.';
   }
   if (msg.includes('0x80070002')) {
-    return 'Este aplicativo está em um estado inconsistente no Windows (arquivos de implantação ausentes) e não pode ser removido por este método. É uma limitação conhecida do Windows, especialmente com a Cortana em algumas versões do Windows 10.';
+    return 'Este aplicativo está em um estado inconsistente no Windows (arquivos de implantação ausentes) e não pode ser removido por este método.';
   }
   if (msg.includes('0x80073d02') || msg.includes('in use')) {
     return 'O aplicativo está em uso no momento. Feche-o e tente novamente.';
@@ -78,14 +78,16 @@ function translateUninstallError(rawError) {
 }
 
 /**
- * Desinstala vários pacotes de uma vez, com UM único prompt de UAC.
- *
- * Correção do erro 0x80070002: antes de chamar Remove-AppxPackage, cada
- * pacote é checado com Get-AppxPackage. Se não existir mais (já removido
- * pelo próprio Windows, ou nunca instalado para o usuário atual), é
- * marcado como "sucesso ignorado" em vez de lançar exceção fatal — esse
- * erro específico do Windows significa exatamente "não há nada para
- * remover", não uma falha real da operação.
+ * Remove um pacote em duas etapas:
+ * 1) Sem -AllUsers (só o usuário atual) — é o que realmente resolve a
+ *    remoção visível na maioria dos casos. Em builds do Windows 10, usar
+ *    -AllUsers direto costuma falhar com 0x80070002 mesmo quando o app
+ *    existe, porque o Windows nem sempre mantém o provisionamento
+ *    consistente para todos os perfis nessas versões.
+ * 2) Tenta remover o provisionamento (Remove-AppxProvisionedPackage) para
+ *    evitar que o app reapareça em contas novas — mas com erro
+ *    SILENCIOSO, já que essa etapa é "bônus" e não deve bloquear o
+ *    resultado principal se falhar.
  */
 async function uninstallBatch(packageFullNames) {
   const escapedList = packageFullNames.map((pkg) => `'${pkg.replace(/'/g, "''")}'`).join(',');
@@ -99,7 +101,22 @@ foreach ($pkg in $packages) {
   $existing = Get-AppxPackage -AllUsers | Where-Object { $_.PackageFullName -eq $pkg }
   if ($null -eq $existing) {
     $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $true }
-  } else {
+    continue
+  }
+
+  $packageName = $existing.Name
+
+  try {
+    Remove-AppxPackage -Package $pkg -ErrorAction Stop
+    # Etapa "bônus": remove o provisionamento para novas contas, mas não
+    # deixa isso derrubar o resultado se falhar.
+    try {
+      Remove-AppxProvisionedPackage -Online -PackageName $pkg -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+    $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $false }
+  } catch {
+    # Fallback: tenta -AllUsers como segunda tentativa, caso o erro tenha
+    # sido de outra natureza que -AllUsers resolveria.
     try {
       Remove-AppxPackage -Package $pkg -AllUsers -ErrorAction Stop
       $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $false }
