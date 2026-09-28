@@ -2342,6 +2342,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "TaskbarEndTask" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
     `
   },
   verify: {
@@ -2370,6 +2373,9 @@ if ($snapshotExists -eq $true) {
 } else {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
     `
   },
   commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
@@ -2382,9 +2388,10 @@ if ($snapshotExists -eq $true) {
   risk: 'low',
   requiresAdmin: false,
   createsBackup: true,
+  requiresReboot: true,
   engine: 'snapshot',
   read: {
-    script: `
+    script:  `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Read-RegValue($path, $name) {
@@ -2396,8 +2403,9 @@ function Read-RegValue($path, $name) {
 try {
   $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
   $result = [ordered]@{
-    AppsUseLightTheme   = Read-RegValue $path "AppsUseLightTheme"
+    AppsUseLightTheme    = Read-RegValue $path "AppsUseLightTheme"
     SystemUsesLightTheme = Read-RegValue $path "SystemUsesLightTheme"
+    ColorPrevalence      = Read-RegValue $path "ColorPrevalence"
   }
   $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
   [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
@@ -2413,8 +2421,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
   $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
   if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-  New-ItemProperty -LiteralPath $path -Name "AppsUseLightTheme" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $path -Name "AppsUseLightTheme"    -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
   New-ItemProperty -LiteralPath $path -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $path -Name "ColorPrevalence"      -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
 } catch {
   Write-Error $_.Exception.Message
   exit 1
@@ -2434,8 +2443,9 @@ function Read-RegValue($path, $name) {
 try {
   $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
   $result = [ordered]@{
-    AppsUseLightTheme   = Read-RegValue $path "AppsUseLightTheme"
+    AppsUseLightTheme    = Read-RegValue $path "AppsUseLightTheme"
     SystemUsesLightTheme = Read-RegValue $path "SystemUsesLightTheme"
+    ColorPrevalence      = Read-RegValue $path "ColorPrevalence"
   }
   $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
   [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
@@ -2460,11 +2470,13 @@ function Restore-RegValue($path, $name, $val) {
 try {
   $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
   if ($snapshotExists -eq $true) {
-    Restore-RegValue $path "AppsUseLightTheme" $snapshotValue.AppsUseLightTheme
+    Restore-RegValue $path "AppsUseLightTheme"    $snapshotValue.AppsUseLightTheme
     Restore-RegValue $path "SystemUsesLightTheme" $snapshotValue.SystemUsesLightTheme
+    Restore-RegValue $path "ColorPrevalence"      $snapshotValue.ColorPrevalence
   } else {
-    Remove-ItemProperty -Path $path -Name "AppsUseLightTheme" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $path -Name "AppsUseLightTheme"    -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path $path -Name "SystemUsesLightTheme" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $path -Name "ColorPrevalence"      -ErrorAction SilentlyContinue
   }
 } catch {
   Write-Error $_.Exception.Message
