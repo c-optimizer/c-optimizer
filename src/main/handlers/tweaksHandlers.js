@@ -2424,6 +2424,10 @@ try {
   New-ItemProperty -LiteralPath $path -Name "AppsUseLightTheme"    -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
   New-ItemProperty -LiteralPath $path -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
   New-ItemProperty -LiteralPath $path -Name "ColorPrevalence"      -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
 } catch {
   Write-Error $_.Exception.Message
   exit 1
@@ -2453,7 +2457,7 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: { AppsUseLightTheme: 0, SystemUsesLightTheme: 0 } }
+    expected: { exists: true, value: { AppsUseLightTheme: 0, SystemUsesLightTheme: 0, ColorPrevalence: 1 } }
   },
   restore: {
     script: `
@@ -2478,9 +2482,205 @@ try {
     Remove-ItemProperty -Path $path -Name "SystemUsesLightTheme" -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path $path -Name "ColorPrevalence"      -ErrorAction SilentlyContinue
   }
+
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
 } catch {
   Write-Error $_.Exception.Message
   exit 1
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-copilot',
+  category: 'Privacidade',
+  title: 'Desativar Copilot',
+  description: 'Remove a integração do assistente Copilot via política de registro.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+$name = "TurnOffWindowsCopilot"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "TurnOffWindowsCopilot" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "TurnOffWindowsCopilot" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.TurnOffWindowsCopilot } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 1 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
+$name = "TurnOffWindowsCopilot"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-fast-startup',
+  category: 'Performance',
+  title: 'Desativar Inicialização Rápida',
+  description: 'Força o Windows a desligar/reiniciar completamente, evitando bugs de memória e acúmulo de uptime.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
+$name = "HiberbootEnabled"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "HiberbootEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "HiberbootEnabled" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.HiberbootEnabled } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 0 }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
+$name = "HiberbootEnabled"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+    `
+  },
+  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+},
+{
+  id: 'disable-location-tracking',
+  category: 'Privacidade',
+  title: 'Desativar Rastreamento de Localização',
+  description: 'Impede a coleta contínua de geolocalização pelo Windows.',
+  risk: 'low',
+  requiresAdmin: true,
+  createsBackup: true,
+  engine: 'snapshot',
+  read: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
+$name = "Value"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+    `
+  },
+  apply: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "Value" -PropertyType String -Value "Deny" -Force -ErrorAction Stop
+    `
+  },
+  verify: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "Value" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.Value } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+    `,
+    expected: { exists: true, value: 'Deny' }
+  },
+  restore: {
+    script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
+$name = "Value"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType String -Value $snapshotValue -Force -ErrorAction Stop
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
   },

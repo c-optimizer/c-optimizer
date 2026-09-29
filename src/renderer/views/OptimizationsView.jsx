@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
-  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame, ShieldHalf, AppWindow, ListChecks, XSquare, Moon
+  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame, ShieldHalf, AppWindow, ListChecks, XSquare, Moon, Sparkle, PowerOff, MapPinOff, Trash2, RefreshCw
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
@@ -33,7 +33,10 @@ const ICON_MAP = {
   'optimize-windowed-games': AppWindow,
   'menu-show-delay': ListChecks,
   'enable-end-task': XSquare,
-  'dark-mode': Moon
+  'dark-mode': Moon,
+  'disable-copilot': Sparkle,
+  'disable-fast-startup': PowerOff,
+  'disable-location-tracking': MapPinOff
 };
 
 const CATEGORIES = ['Todas', 'Gaming', 'GPU', 'Rede', 'Privacidade', 'Performance'];
@@ -56,6 +59,10 @@ function OptimizationsView() {
 
   // XMP/DOCP
   const [memoryProfile, setMemoryProfile] = useState(null);
+  // Standby List Cleaner
+  const [cleaningStandby, setCleaningStandby] = useState(false);
+  const [standbyMsg, setStandbyMsg] = useState(null);
+  const [standbyError, setStandbyError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -139,6 +146,29 @@ function OptimizationsView() {
       setDiskError(error.message);
     } finally {
       setOptimizingDrive(null);
+    }
+  };
+
+  const handleCleanStandby = async () => {
+    setCleaningStandby(true);
+    setStandbyMsg(null);
+    setStandbyError(null);
+
+    try {
+      const result = await window.electronAPI.invoke('latency:clean-standby');
+      if (result.success) {
+        setStandbyMsg('Memória em espera (Standby List) liberada com sucesso!');
+      } else {
+        setStandbyError(result.error || 'Falha ao liberar a memória em espera.');
+      }
+    } catch (error) {
+      setStandbyError(error.message);
+    } finally {
+      setCleaningStandby(false);
+      setTimeout(() => {
+        setStandbyMsg(null);
+        setStandbyError(null);
+      }, 6000);
     }
   };
 
@@ -262,6 +292,41 @@ function OptimizationsView() {
             </div>
           </div>
 
+          {/* Card: Limpar Standby List (ação, não toggle) */}
+          <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Trash2 size={18} className="text-c-secondary" />
+              <h3 className="text-slate-200 font-semibold text-sm">Liberar Memória em Espera</h3>
+            </div>
+            <p className="text-slate-500 text-xs -mt-2">
+              Libera a Standby List do Windows — memória em cache de processos encerrados.
+              Recomendado antes de iniciar jogos pesados. Exige permissão de Administrador.
+            </p>
+
+            {standbyMsg && (
+              <div className="flex items-center gap-2 text-c-primary text-xs bg-c-primary/10 border border-c-primary/30 rounded-lg px-3 py-2">
+                <CheckCircle2 size={14} />
+                {standbyMsg}
+              </div>
+            )}
+
+            {standbyError && (
+              <div className="flex items-start gap-2 text-c-danger text-xs bg-c-danger/10 border border-c-danger/30 rounded-lg px-3 py-2">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                {standbyError}
+              </div>
+            )}
+
+            <button
+              onClick={handleCleanStandby}
+              disabled={cleaningStandby}
+              className="self-start flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
+            >
+              {cleaningStandby ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {cleaningStandby ? 'Liberando...' : 'Liberar Memória Agora'}
+            </button>
+          </div>
+
           {/* Card: Status XMP/DOCP (somente informativo) */}
           {memoryProfile?.supported && (
             <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-3">
@@ -272,11 +337,10 @@ function OptimizationsView() {
 
               <div className="flex items-center gap-3 flex-wrap">
                 <span
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                    memoryProfile.xmpActive
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${memoryProfile.xmpActive
                       ? 'bg-c-primary/10 text-c-primary border-c-primary/30'
                       : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                  }`}
+                    }`}
                 >
                   {memoryProfile.xmpActive ? 'Ativo' : 'Inativo / Modo Padrão'}
                 </span>

@@ -53,6 +53,10 @@ const validInvokeChannels = [
   'settings:set-language',
   'notifications:show',
 
+  // Latency Tools
+  'latency:is-admin',
+  'latency:clean-standby',
+
   // Autenticação
   'auth:validate-license',
   'auth:get-stored-license',

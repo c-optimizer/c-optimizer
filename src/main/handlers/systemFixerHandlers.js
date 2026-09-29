@@ -149,9 +149,32 @@ function runDriveCheck(driveLetter, window) {
       }, 30000);
     }
 
+    // Regex sem âncora de fim de string — o prompt pode não vir com \n,
+    // ficando incompleto no buffer, então precisa ser detectado mesmo
+    // dentro de um trecho parcial, não só em linhas já fechadas.
+    const promptRegex = /\(([A-Za-z])\/([A-Za-z])\)/;
+
+    function checkPromptInBuffer() {
+      const match = buffer.match(promptRegex);
+      if (match) {
+        if (window && !window.isDestroyed()) {
+          window.webContents.send('system-fixer:progress', { stepId: 'chkdsk', line: stripAnsi(buffer).trim() });
+        }
+        ptyProcess.write(match[1] + '\r');
+        buffer = '';
+        return true;
+      }
+      return false;
+    }
+
     ptyProcess.onData((data) => {
       resetWatchdog();
       buffer += data;
+
+      // Responde imediatamente se o prompt já estiver no buffer, mesmo
+      // sem quebra de linha (era isso que travava o processo antes).
+      if (checkPromptInBuffer()) return;
+
       const parts = buffer.split(/\r\n|\r|\n/);
       buffer = parts.pop();
 
@@ -166,13 +189,7 @@ function runDriveCheck(driveLetter, window) {
             try { ptyProcess.kill(); } catch { /* ignora */ }
             resolve({ success: false, exitCode: -1, error: 'Acesso negado pelo Windows ao tentar verificar a unidade.' });
           }
-          continue;
-        }
-
-        const promptMatch = raw.match(/\(([A-Za-z])\/([A-Za-z])\)\s*\??\s*$/);
-        if (promptMatch) {
-          ptyProcess.write(promptMatch[1] + '\r');
-          continue;
+          return;
         }
 
         if (window && !window.isDestroyed()) {

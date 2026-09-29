@@ -16,6 +16,7 @@ const { registerSystemFixerHandlers } = require('./handlers/systemFixerHandlers'
 const { setupTray, destroyTray } = require('./utils/tray');
 const { registerNotificationHandlers, notifyIfEnabled } = require('./handlers/notificationHandlers');
 const { registerChangelogHandlers } = require('./handlers/changelogHandlers');
+const { registerLatencyHandlers } = require('./handlers/latencyHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -121,6 +122,7 @@ app.whenReady().then(() => {
   registerSystemFixerHandlers();
   registerNotificationHandlers();
   registerChangelogHandlers();
+  registerLatencyHandlers();
 
   createWindow();
 
