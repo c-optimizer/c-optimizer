@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Gamepad2, CircuitBoard, Network, ShieldOff, Gauge, Loader2, AlertCircle,
-  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame, ShieldHalf, AppWindow, ListChecks, XSquare, Moon, Sparkle, PowerOff, MapPinOff, Trash2, RefreshCw
+  ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw, Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame, ShieldHalf, AppWindow, ListChecks, XSquare, Moon, Sparkle, PowerOff, MapPinOff,   Trash2, RefreshCw, Sun
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
@@ -63,6 +63,12 @@ function OptimizationsView() {
   const [cleaningStandby, setCleaningStandby] = useState(false);
   const [standbyMsg, setStandbyMsg] = useState(null);
   const [standbyError, setStandbyError] = useState(null);
+  // Display — Brilho
+  const [brightness, setBrightness] = useState(50);
+  const [brightnessAvailable, setBrightnessAvailable] = useState(true);
+  const [applyingBrightness, setApplyingBrightness] = useState(false);
+  const [brightnessMsg, setBrightnessMsg] = useState(null);
+  const [brightnessError, setBrightnessError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -81,6 +87,19 @@ function OptimizationsView() {
           setIsAdmin(adminStatus);
           if (volumesResult.success) setVolumes(volumesResult.volumes);
           setMemoryProfile(memProfile);
+                  // Carrega o brilho atual. Se falhar, o card mostra estado "indisponível".
+        try {
+          const brightRes = await window.electronAPI.invoke('display:get-brightness');
+          if (isMounted) {
+            if (brightRes?.success) {
+              setBrightness(brightRes.current ?? 50);
+            } else {
+              setBrightnessAvailable(false);
+            }
+          }
+        } catch {
+          if (isMounted) setBrightnessAvailable(false);
+        }
           setLoading(false);
         }
       } catch (error) {
@@ -157,7 +176,8 @@ function OptimizationsView() {
     try {
       const result = await window.electronAPI.invoke('latency:clean-standby');
       if (result.success) {
-        setStandbyMsg('Memória em espera (Standby List) liberada com sucesso!');
+        const mb = (result.freedBytes / (1024 * 1024)).toFixed(1);
+        setStandbyMsg(`Liberado: ${mb} MB de memória em espera.`);
       } else {
         setStandbyError(result.error || 'Falha ao liberar a memória em espera.');
       }
@@ -169,6 +189,25 @@ function OptimizationsView() {
         setStandbyMsg(null);
         setStandbyError(null);
       }, 6000);
+    }
+  };
+
+  const handleApplyBrightness = async () => {
+    setApplyingBrightness(true);
+    setBrightnessMsg(null);
+    setBrightnessError(null);
+    try {
+      const result = await window.electronAPI.invoke('display:set-brightness', brightness);
+      if (result.success) {
+        setBrightnessMsg(`Brilho aplicado: ${result.percent}%`);
+      } else {
+        setBrightnessError(result.error);
+      }
+    } catch (error) {
+      setBrightnessError(error.message);
+    } finally {
+      setApplyingBrightness(false);
+      setTimeout(() => { setBrightnessMsg(null); setBrightnessError(null); }, 4000);
     }
   };
 
@@ -325,6 +364,66 @@ function OptimizationsView() {
               {cleaningStandby ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               {cleaningStandby ? 'Liberando...' : 'Liberar Memória Agora'}
             </button>
+          </div>
+
+                      {/* Card: Brilho da Tela */}
+          <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Sun size={18} className="text-c-secondary" />
+              <h3 className="text-slate-200 font-semibold text-sm">Brilho da Tela</h3>
+            </div>
+            <p className="text-slate-500 text-xs -mt-2">
+              Ajusta o brilho do painel via DDC/CI (monitores externos) ou driver interno.
+              Em monitores externos, exige DDC/CI habilitado no menu do próprio monitor.
+            </p>
+
+            {!brightnessAvailable ? (
+              <div className="flex items-start gap-2 text-c-danger text-xs bg-c-danger/10 border border-c-danger/30 rounded-lg px-3 py-2">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                Seu monitor/driver não expõe controle de brilho via Windows. Isso é comum em monitores
+                externos com DDC/CI desligado no menu OSD.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={brightness}
+                    onChange={(e) => setBrightness(Number(e.target.value))}
+                    className="flex-1 accent-c-secondary"
+                  />
+                  <span className="text-slate-200 text-sm font-mono tabular-nums w-14 text-right">
+                    {brightness}%
+                  </span>
+                </div>
+
+                {brightnessMsg && (
+                  <div className="flex items-center gap-2 text-c-primary text-xs bg-c-primary/10 border border-c-primary/30 rounded-lg px-3 py-2">
+                    <CheckCircle2 size={14} />
+                    {brightnessMsg}
+                  </div>
+                )}
+
+                {brightnessError && (
+                  <div className="flex items-start gap-2 text-c-danger text-xs bg-c-danger/10 border border-c-danger/30 rounded-lg px-3 py-2">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    {brightnessError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleApplyBrightness}
+                  disabled={applyingBrightness}
+                  className="self-start flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
+                >
+                  {applyingBrightness ? <Loader2 size={14} className="animate-spin" /> : <Sun size={14} />}
+                  {applyingBrightness ? 'Aplicando...' : 'Aplicar'}
+                </button>
+              </>
+            )}
           </div>
 
           {/* Card: Status XMP/DOCP (somente informativo) */}

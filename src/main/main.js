@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { log } = require('./utils/logger');
+const { registerDisplayHandlers } = require('./handlers/displayHandlers');
 
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
@@ -123,6 +124,7 @@ app.whenReady().then(() => {
   registerNotificationHandlers();
   registerChangelogHandlers();
   registerLatencyHandlers();
+  registerDisplayHandlers();
 
   createWindow();
 

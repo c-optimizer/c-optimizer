@@ -2,6 +2,7 @@ const { ipcMain, BrowserWindow } = require('electron');
 const { runShellCommand, isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
+const si = require('systeminformation');
 
 /**
  * Script PowerShell que limpa a Standby List do Windows.
@@ -78,6 +79,12 @@ function registerLatencyHandlers() {
 
     try {
       log.info('[latency] Purging standby list...');
+
+      // Lê o "buffcache" — é o que o systeminformation expõe mais próximo
+      // da Standby List (cache de arquivos + standby).
+      const beforeMem = await si.mem();
+      const beforeBuffCache = beforeMem.buffcache || 0;
+
       const { stdout } = await runShellCommand(STANDBY_CLEAN_SCRIPT, 15000);
       const trimmed = (stdout || '').trim();
 
@@ -99,11 +106,17 @@ function registerLatencyHandlers() {
         };
       }
 
-      log.info('[latency] Standby list purged successfully.');
+      // Pequena espera para o Windows consolidar o novo estado de memória
+      // antes de medirmos de novo.
+      await new Promise((r) => setTimeout(r, 500));
+      const afterMem = await si.mem();
+      const afterBuffCache = afterMem.buffcache || 0;
 
-      // O purge agressivo trimma o working set do renderer do Electron, que
-      // pode ficar com tela preta. Agendamos um reload ~1.2s depois para o
-      // usuário ver a mensagem de sucesso antes do reload acontecer.
+      const freedBytes = Math.max(0, beforeBuffCache - afterBuffCache);
+      log.info(`[latency] Standby list purged. Liberado: ${freedBytes} bytes.`);
+
+      // Reload do renderer após purge agressivo (bug conhecido: trimma
+      // working sets de processos em segundo plano, incluindo o Electron).
       const win = BrowserWindow.fromWebContents(event.sender);
       if (win && !win.isDestroyed()) {
         setTimeout(() => {
@@ -114,7 +127,7 @@ function registerLatencyHandlers() {
         }, 1200);
       }
 
-      return { success: true };
+      return { success: true, freedBytes };
     } catch (err) {
       log.error('[latency] Falha ao limpar standby list:', err.message);
       return { success: false, error: `Falha ao limpar memória em espera: ${err.message}` };

@@ -53,6 +53,10 @@ const validInvokeChannels = [
   'settings:set-language',
   'notifications:show',
 
+  // Display & Cores
+  'display:get-brightness',
+  'display:set-brightness',
+
   // Latency Tools
   'latency:is-admin',
   'latency:clean-standby',
