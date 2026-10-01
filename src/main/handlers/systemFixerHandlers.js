@@ -112,6 +112,76 @@ function runDriveCheck(driveLetter, window) {
       return resolve({ success: false, error: msg });
     }
 
+    const systemDrive = (process.env.SystemDrive || 'C:').replace(/:/g, '').toUpperCase();
+    const targetDrive = String(driveLetter).replace(/:/g, '').toUpperCase();
+    const isSystemDrive = systemDrive === targetDrive;
+
+    // ------ CASO 1: unidade do sistema ------
+    // CHKDSK com /f /r NUNCA roda na unidade do sistema em tempo real — o
+    // Windows precisa travar o volume, e não pode travar o disco em que ele
+    // próprio está rodando. A solução oficial é `fsutil dirty set`: marca o
+    // volume como "sujo", e o autochk roda automaticamente no próximo boot
+    // antes de qualquer outro processo abrir o volume.
+    if (isSystemDrive) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('system-fixer:progress', {
+          stepId: 'chkdsk',
+          line: 'Unidade do sistema detectada — agendando verificação para o próximo reinício via fsutil...'
+        });
+      }
+
+      let ptyProcess;
+      try {
+        ptyProcess = pty.spawn('cmd.exe', ['/c', `fsutil dirty set ${driveLetter}:`], {
+          name: 'xterm',
+          cols: 120,
+          rows: 30,
+          cwd: process.cwd(),
+          env: process.env
+        });
+      } catch (err) {
+        log.error('[system-fixer] Falha ao iniciar fsutil:', err.message);
+        return resolve({ success: false, error: err.message });
+      }
+
+      let buffer = '';
+      let settled = false;
+
+      ptyProcess.onData((data) => {
+        buffer += data;
+        const parts = buffer.split(/\r\n|\r|\n/);
+        buffer = parts.pop();
+        for (const part of parts) {
+          const text = stripAnsi(part).trim();
+          if (text && window && !window.isDestroyed()) {
+            window.webContents.send('system-fixer:progress', { stepId: 'chkdsk', line: text });
+          }
+        }
+      });
+
+      ptyProcess.onExit(({ exitCode }) => {
+        if (settled) return;
+        settled = true;
+        if (exitCode === 0) {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('system-fixer:progress', {
+              stepId: 'chkdsk',
+              line: 'Verificação agendada com sucesso. Será executada automaticamente no próximo reinício do Windows.'
+            });
+          }
+          return resolve({ success: true, exitCode: 0, scheduled: true });
+        }
+        return resolve({
+          success: false,
+          exitCode,
+          error: `Falha ao agendar verificação (fsutil retornou ${exitCode}).`
+        });
+      });
+
+      return;
+    }
+
+    // ------ CASO 2: unidade não-sistema (chkdsk roda direto) ------
     if (window && !window.isDestroyed()) {
       window.webContents.send('system-fixer:progress', {
         stepId: 'chkdsk',
@@ -121,7 +191,10 @@ function runDriveCheck(driveLetter, window) {
 
     let ptyProcess;
     try {
-      ptyProcess = pty.spawn('chkdsk.exe', [`${driveLetter}:`, '/f', '/r'], {
+      // Para unidades não-sistema, chkdsk pode travar o volume e rodar
+      // em tempo real. `cmd.exe /c` porque chkdsk.exe é ferramenta legada
+      // e exige um console real para inicializar.
+      ptyProcess = pty.spawn('cmd.exe', ['/c', `chkdsk ${driveLetter}: /f /r`], {
         name: 'xterm',
         cols: 120,
         rows: 30,
@@ -149,9 +222,6 @@ function runDriveCheck(driveLetter, window) {
       }, 30000);
     }
 
-    // Regex sem âncora de fim de string — o prompt pode não vir com \n,
-    // ficando incompleto no buffer, então precisa ser detectado mesmo
-    // dentro de um trecho parcial, não só em linhas já fechadas.
     const promptRegex = /\(([A-Za-z])\/([A-Za-z])\)/;
 
     function checkPromptInBuffer() {
@@ -170,9 +240,6 @@ function runDriveCheck(driveLetter, window) {
     ptyProcess.onData((data) => {
       resetWatchdog();
       buffer += data;
-
-      // Responde imediatamente se o prompt já estiver no buffer, mesmo
-      // sem quebra de linha (era isso que travava o processo antes).
       if (checkPromptInBuffer()) return;
 
       const parts = buffer.split(/\r\n|\r|\n/);

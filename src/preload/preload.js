@@ -56,6 +56,10 @@ const validInvokeChannels = [
   // Display & Cores
   'display:get-brightness',
   'display:set-brightness',
+  // Timer Resolution
+  'timer:get-status',
+  'timer:start',
+  'timer:stop',
 
   // Latency Tools
   'latency:is-admin',

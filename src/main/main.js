@@ -7,7 +7,7 @@ const { registerDisplayHandlers } = require('./handlers/displayHandlers');
 const { registerSystemHandlers, stopStatsStreaming } = require('./handlers/systemHandlers');
 const { registerTweaksHandlers } = require('./handlers/tweaksHandlers');
 const { registerCleanupHandlers } = require('./handlers/cleanupHandlers');
-const { registerSettingsHandlers } = require('./handlers/settingsHandlers');
+const { registerSettingsHandlers, reconcileStartupOnBoot } = require('./handlers/settingsHandlers');
 const { registerRestoreHandlers } = require('./handlers/restoreHandlers');
 const { registerAppsHandlers } = require('./handlers/appsHandlers');
 const { registerAuthHandlers } = require('./handlers/authHandlers');
@@ -18,6 +18,8 @@ const { setupTray, destroyTray } = require('./utils/tray');
 const { registerNotificationHandlers, notifyIfEnabled } = require('./handlers/notificationHandlers');
 const { registerChangelogHandlers } = require('./handlers/changelogHandlers');
 const { registerLatencyHandlers } = require('./handlers/latencyHandlers');
+const { registerTimerHandlers } = require('./handlers/timerHandlers');
+const { registerShutdownHandlers } = require('./utils/timerResolution');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -125,6 +127,9 @@ app.whenReady().then(() => {
   registerChangelogHandlers();
   registerLatencyHandlers();
   registerDisplayHandlers();
+  registerTimerHandlers();
+  registerShutdownHandlers();
+  reconcileStartupOnBoot();
 
   createWindow();
 

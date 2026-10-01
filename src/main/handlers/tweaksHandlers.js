@@ -17,18 +17,18 @@ const { saveSnapshot, getSnapshot, removeSnapshot } = require('../utils/snapshot
  *   primitivos).
  */
 const TWEAKS_CATALOG = [
-  
-{
-  id: 'gaming-priority',
-  category: 'Gaming',
-  title: 'Prioridade de CPU para Jogos',
-  description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
-  risk: 'medium',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+
+  {
+    id: 'gaming-priority',
+    category: 'Gaming',
+    title: 'Prioridade de CPU para Jogos',
+    description: 'Ajusta o agendador do Windows para priorizar processos de jogos em primeiro plano.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
@@ -48,18 +48,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "Win32PrioritySeparation" -PropertyType DWord -Value 38 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
@@ -70,10 +70,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 38 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 38 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl"
@@ -85,11 +85,11 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
     id: 'gpu-scheduling',
     category: 'GPU',
@@ -164,16 +164,16 @@ if ($snapshotExists -eq $true) {
     }
   },
   {
-  id: 'network-nagle',
-  category: 'Rede',
-  title: 'Desativar Algoritmo de Nagle',
-  description: 'Reduz a latência de rede desativando o agrupamento de pacotes TCP pequenos em todas as interfaces de rede.',
-  risk: 'medium',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'network-nagle',
+    category: 'Rede',
+    title: 'Desativar Algoritmo de Nagle',
+    description: 'Reduz a latência de rede desativando o agrupamento de pacotes TCP pequenos em todas as interfaces de rede.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -192,9 +192,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -209,9 +209,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -235,15 +235,15 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    // 'exists: true' aqui significa "todas as interfaces presentes no momento
-    // do verify têm os valores aplicados" — não comparamos 'value' diretamente
-    // porque o NÚMERO de interfaces pode diferir entre o apply e o verify
-    // (ex: uma VPN conectou no meio do processo). expected.value é omitido
-    // de propósito; só 'exists' é checado.
-    expected: { exists: true }
-  },
-  restore: {
-    script: `
+      // 'exists: true' aqui significa "todas as interfaces presentes no momento
+      // do verify têm os valores aplicados" — não comparamos 'value' diretamente
+      // porque o NÚMERO de interfaces pode diferir entre o apply e o verify
+      // (ex: uma VPN conectou no meio do processo). expected.value é omitido
+      // de propósito; só 'exists' é checado.
+      expected: { exists: true }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -280,22 +280,22 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
-  id: 'network-throttling',
-  category: 'Rede',
-  title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
-  description: 'Remove o limite de rede em segundo plano e configura o perfil MMCSS de jogos com prioridade máxima de CPU/GPU.',
-  risk: 'medium',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'network-throttling',
+    category: 'Rede',
+    title: 'Desativar Limitação de Rede e Priorizar Jogos (MMCSS)',
+    description: 'Remove o limite de rede em segundo plano e configura o perfil MMCSS de jogos com prioridade máxima de CPU/GPU.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -323,9 +323,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -344,9 +344,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -374,19 +374,19 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: {
-      exists: true,
-      value: {
-        NetworkThrottlingIndex: 4294967295,
-        SystemResponsiveness: 0,
-        GpuPriority: 8,
-        Priority: 6,
-        SchedulingCategory: 'High'
+      expected: {
+        exists: true,
+        value: {
+          NetworkThrottlingIndex: 4294967295,
+          SystemResponsiveness: 0,
+          GpuPriority: 8,
+          Priority: 6,
+          SchedulingCategory: 'High'
+        }
       }
-    }
-  },
-  restore: {
-    script: `
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -423,22 +423,22 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
- {
-  id: 'disable-telemetry',
-  category: 'Privacidade',
-  title: 'Desativar Telemetria do Windows',
-  description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft (política de registro).',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-telemetry',
+    category: 'Privacidade',
+    title: 'Desativar Telemetria do Windows',
+    description: 'Interrompe o envio de dados de diagnóstico e uso para a Microsoft (política de registro).',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
@@ -458,18 +458,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "AllowTelemetry" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
@@ -480,10 +480,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection"
@@ -495,11 +495,11 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
     // NOVO — mecanismo diferente do tweak acima (que mexe em política de
     // registro): este para e desativa os serviços de telemetria em si.
@@ -629,16 +629,16 @@ try {
     }
   },
   {
-  id: 'power-plan',
-  category: 'Performance',
-  title: 'Plano de Energia Ultimate',
-  description: 'Ativa o plano de energia de máxima performance do Windows (Ultimate Performance ou Alto Desempenho).',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'power-plan',
+    category: 'Performance',
+    title: 'Plano de Energia Ultimate',
+    description: 'Ativa o plano de energia de máxima performance do Windows (Ultimate Performance ou Alto Desempenho).',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -653,9 +653,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -685,9 +685,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -702,12 +702,12 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-    // Sem 'expected' fixo: o GUID do plano ativo após duplicar pode ser
-    // qualquer novo GUID gerado pelo Windows, não um valor conhecido de
-    // antemão. O motor aceita 'expected' ausente e só valida 'success'.
-  },
-  restore: {
-    script: `
+      // Sem 'expected' fixo: o GUID do plano ativo após duplicar pode ser
+      // qualquer novo GUID gerado pelo Windows, não um valor conhecido de
+      // antemão. O motor aceita 'expected' ausente e só valida 'success'.
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -724,22 +724,22 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'visual-performance',
-  category: 'Performance',
-  title: 'Priorizar Desempenho Visual',
-  description: 'Desativa animações de janelas, sombras e transparências, mantendo as fontes suaves (ClearType) intactas.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'visual-performance',
+    category: 'Performance',
+    title: 'Priorizar Desempenho Visual',
+    description: 'Desativa animações de janelas, sombras e transparências, mantendo as fontes suaves (ClearType) intactas.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -765,9 +765,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -789,9 +789,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -817,20 +817,20 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: {
-      exists: true,
-      value: {
-        MinAnimate: '0',
-        TaskbarAnimations: 0,
-        ListviewAlphaSelect: 0,
-        ListviewShadow: 0,
-        DragFullWindows: '0',
-        EnableAeroPeek: 0
+      expected: {
+        exists: true,
+        value: {
+          MinAnimate: '0',
+          TaskbarAnimations: 0,
+          ListviewAlphaSelect: 0,
+          ListviewShadow: 0,
+          DragFullWindows: '0',
+          EnableAeroPeek: 0
+        }
       }
-    }
-  },
-  restore: {
-    script: `
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -866,28 +866,28 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
     // MIGRADO PARA O MOTOR AGNÓSTICO nesta rodada.
     // Rastreia apenas 'useplatformclock' via bcdedit. Atenção: em Windows
     // localizados (ex: PT-BR), bcdedit pode retornar "Sim"/"Não" em vez
     // de "Yes"/"No" — se o teste em máquina PT-BR falhar na verificação,
     // ajustar o `expected.value` ou normalizar a string no read/verify.
- id: 'disable-hpet',
-  category: 'Performance',
-  title: 'Desativar HPET (Timer de Alta Precisão)',
-  description: 'Reduz o overhead de sincronização de timer do Windows, diminuindo o input lag em jogos competitivos.',
-  risk: 'medium',
-  requiresAdmin: true,
-  createsBackup: true,
-  requiresReboot: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'disable-hpet',
+    category: 'Performance',
+    title: 'Desativar HPET (Timer de Alta Precisão)',
+    description: 'Reduz o overhead de sincronização de timer do Windows, diminuindo o input lag em jogos competitivos.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    requiresReboot: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Normalize-BcdBool($raw) {
@@ -911,9 +911,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -924,11 +924,11 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    // Idêntico ao read.script, com a mesma normalização — garante que a
-    // comparação via deepEqual nunca dependa do idioma do Windows.
-    script: `
+    },
+    verify: {
+      // Idêntico ao read.script, com a mesma normalização — garante que a
+      // comparação via deepEqual nunca dependa do idioma do Windows.
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -947,13 +947,13 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 'No' }
-  },
-  restore: {
-    // $snapshotValue chega como $null quando a propriedade não existia
-    // (seu caso) — o -match nunca é avaliado contra $null de forma
-    // problemática porque $snapshotExists já decide o ramo primeiro.
-    script: `
+      expected: { exists: true, value: 'No' }
+    },
+    restore: {
+      // $snapshotValue chega como $null quando a propriedade não existia
+      // (seu caso) — o -match nunca é avaliado contra $null de forma
+      // problemática porque $snapshotExists já decide o ramo primeiro.
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -968,22 +968,22 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
-  id: 'disable-mouse-accel',
-  category: 'Gaming',
-  title: 'Desativar Aceleração do Mouse',
-  description: 'Garante resposta 1:1 do ponteiro (Precision Pointer), essencial para mira precisa em jogos FPS.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'disable-mouse-accel',
+    category: 'Gaming',
+    title: 'Desativar Aceleração do Mouse',
+    description: 'Garante resposta 1:1 do ponteiro (Precision Pointer), essencial para mira precisa em jogos FPS.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1006,9 +1006,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -1032,9 +1032,9 @@ public class MouseNativeApply {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1057,13 +1057,13 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: {
-      exists: true,
-      value: { MouseSpeed: '0', MouseThreshold1: '0', MouseThreshold2: '0' }
-    }
-  },
-  restore: {
-    script: `
+      expected: {
+        exists: true,
+        value: { MouseSpeed: '0', MouseThreshold1: '0', MouseThreshold2: '0' }
+      }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1112,22 +1112,22 @@ public class MouseNativeRestore {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
-  id: 'disable-fullscreen-opt',
-  category: 'Gaming',
-  title: 'Desativar Otimizações de Tela Cheia',
-  description: 'Desativa Fullscreen Optimizations e a gravação do Game Bar em segundo plano, reduzindo input lag e stutter.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'disable-fullscreen-opt',
+    category: 'Gaming',
+    title: 'Desativar Otimizações de Tela Cheia',
+    description: 'Desativa Fullscreen Optimizations e a gravação do Game Bar em segundo plano, reduzindo input lag e stutter.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1152,9 +1152,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -1171,9 +1171,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1198,19 +1198,19 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: {
-      exists: true,
-      value: {
-        GameDVR_FSEBehaviorMode: 2,
-        GameDVR_FSEBehaviorModeUserChoice: 2,
-        GameDVR_DXGIHonorFSEWindowsCompatible: 1,
-        GameDVR_Enabled: 0,
-        AppCaptureEnabled: 0
+      expected: {
+        exists: true,
+        value: {
+          GameDVR_FSEBehaviorMode: 2,
+          GameDVR_FSEBehaviorModeUserChoice: 2,
+          GameDVR_DXGIHonorFSEWindowsCompatible: 1,
+          GameDVR_Enabled: 0,
+          AppCaptureEnabled: 0
+        }
       }
-    }
-  },
-  restore: {
-    script: `
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -1244,22 +1244,22 @@ try {
   exit 1
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
-  id: 'background-apps',
-  category: 'Performance',
-  title: 'Suspender Apps em Segundo Plano',
-  description: 'Impede que aplicativos UWP consumam CPU quando minimizados.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'background-apps',
+    category: 'Performance',
+    title: 'Suspender Apps em Segundo Plano',
+    description: 'Impede que aplicativos UWP consumam CPU quando minimizados.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
@@ -1279,18 +1279,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "GlobalUserDisabled" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
@@ -1301,10 +1301,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications"
@@ -1316,11 +1316,11 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
   {
     id: 'disable-accessibility-keys',
     category: 'Gaming',
@@ -1451,16 +1451,16 @@ try {
     }
   },
   {
-  id: 'hide-action-center',
-  category: 'Performance',
-  title: 'Ocultar Central de Ações',
-  description: 'Remove o ícone da Central de Ações/Notificações da barra de tarefas.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+    id: 'hide-action-center',
+    category: 'Performance',
+    title: 'Ocultar Central de Ações',
+    description: 'Remove o ícone da Central de Ações/Notificações da barra de tarefas.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
@@ -1480,18 +1480,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "DisableNotificationCenter" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
@@ -1502,10 +1502,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer"
@@ -1517,22 +1517,22 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'hide-people-icon',
-  category: 'Performance',
-  title: 'Ocultar Ícone de Contatos (People)',
-  description: 'Remove o ícone de contatos/People da barra de tarefas.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'hide-people-icon',
+    category: 'Performance',
+    title: 'Ocultar Ícone de Contatos (People)',
+    description: 'Remove o ícone de contatos/People da barra de tarefas.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
@@ -1552,18 +1552,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "PeopleBand" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
@@ -1574,10 +1574,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\People"
@@ -1589,22 +1589,22 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'remove-shortcut-suffix',
-  category: 'Performance',
-  title: 'Remover Sufixo "- Atalho" de Novos Atalhos',
-  description: 'Novos atalhos criados no Windows não terão mais o sufixo "- Atalho" no nome.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'remove-shortcut-suffix',
+    category: 'Performance',
+    title: 'Remover Sufixo "- Atalho" de Novos Atalhos',
+    description: 'Novos atalhos criados no Windows não terão mais o sufixo "- Atalho" no nome.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
@@ -1627,9 +1627,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
@@ -1638,9 +1638,9 @@ if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 $bytes = [byte[]](0,0,0,0)
 New-ItemProperty -LiteralPath $path -Name "link" -PropertyType Binary -Value $bytes -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
@@ -1652,10 +1652,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: '0,0,0,0' }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: '0,0,0,0' }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer"
@@ -1668,22 +1668,22 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'taskbar-transparency',
-  category: 'Performance',
-  title: 'Aumentar Transparência da Barra de Tarefas',
-  description: 'Deixa a barra de tarefas mais transparente, sem afetar a transparência geral do sistema.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'taskbar-transparency',
+    category: 'Performance',
+    title: 'Aumentar Transparência da Barra de Tarefas',
+    description: 'Deixa a barra de tarefas mais transparente, sem afetar a transparência geral do sistema.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1703,18 +1703,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "UseOLEDTaskbarTransparency" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1725,10 +1725,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1740,22 +1740,22 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'explorer-compact-mode',
-  category: 'Performance',
-  title: 'Modo Compacto do Explorador de Arquivos',
-  description: 'Reduz o espaçamento entre itens no Explorador de Arquivos, mostrando mais itens na tela.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'explorer-compact-mode',
+    category: 'Performance',
+    title: 'Modo Compacto do Explorador de Arquivos',
+    description: 'Reduz o espaçamento entre itens no Explorador de Arquivos, mostrando mais itens na tela.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1775,18 +1775,18 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "UseCompactMode" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1797,10 +1797,10 @@ try {
   [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
@@ -1812,22 +1812,22 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: {
+      linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
+    }
   },
-  commands: {
-    linux: { apply: `echo "simulado"`, revert: `echo "simulado"` }
-  }
-},
-{
-  id: 'disable-insider',
-  category: 'Privacidade',
-  title: 'Bloquear Windows Insider',
-  description: 'Impede o download de atualizações não estáveis (pré-lançamento) do Windows Insider Program.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-insider',
+    category: 'Privacidade',
+    title: 'Bloquear Windows Insider',
+    description: 'Impede o download de atualizações não estáveis (pré-lançamento) do Windows Insider Program.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Read-RegValue($path, $name) {
@@ -1849,9 +1849,9 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -1865,9 +1865,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Read-RegValue($path, $name) {
@@ -1889,13 +1889,13 @@ try {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: {
-      exists: true,
-      value: { AllowBuildPreview: 0, EnableConfigFlighting: 0, EnableExperimentation: 0 }
-    }
-  },
-  restore: {
-    script: `
+      expected: {
+        exists: true,
+        value: { AllowBuildPreview: 0, EnableConfigFlighting: 0, EnableExperimentation: 0 }
+      }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Restore-RegValue($path, $name, $val) {
@@ -1922,20 +1922,20 @@ try {
   exit 1
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-chrome-autoupdate',
-  category: 'Privacidade',
-  title: 'Desativar Atualização Automática do Chrome',
-  description: 'Impede que o Google Chrome se atualize automaticamente em segundo plano.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-chrome-autoupdate',
+    category: 'Privacidade',
+    title: 'Desativar Atualização Automática do Chrome',
+    description: 'Impede que o Google Chrome se atualize automaticamente em segundo plano.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
@@ -1949,18 +1949,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "UpdateDefault" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
@@ -1971,10 +1971,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Google\\Update"
@@ -1986,20 +1986,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-edge-autoupdate',
-  category: 'Privacidade',
-  title: 'Desativar Atualização Automática do Edge',
-  description: 'Impede que o Microsoft Edge se atualize automaticamente em segundo plano.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-edge-autoupdate',
+    category: 'Privacidade',
+    title: 'Desativar Atualização Automática do Edge',
+    description: 'Impede que o Microsoft Edge se atualize automaticamente em segundo plano.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
@@ -2013,18 +2013,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "UpdateDefault" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
@@ -2035,10 +2035,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate"
@@ -2050,20 +2050,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-firefox-autoupdate',
-  category: 'Privacidade',
-  title: 'Desativar Atualização Automática do Firefox',
-  description: 'Impede que o Mozilla Firefox se atualize automaticamente em segundo plano.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-firefox-autoupdate',
+    category: 'Privacidade',
+    title: 'Desativar Atualização Automática do Firefox',
+    description: 'Impede que o Mozilla Firefox se atualize automaticamente em segundo plano.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
@@ -2077,18 +2077,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "DisableAppUpdate" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
@@ -2099,10 +2099,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Mozilla\\Firefox"
@@ -2114,21 +2114,21 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-core-isolation',
-  category: 'Gaming',
-  title: 'Desativar Isolamento do Núcleo (VBS)',
-  description: 'Desabilita a Integridade da Memória (Virtualization-Based Security), reduzindo overhead do sistema para mais FPS em jogos.',
-  risk: 'medium',
-  requiresAdmin: true,
-  createsBackup: true,
-  requiresReboot: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-core-isolation',
+    category: 'Gaming',
+    title: 'Desativar Isolamento do Núcleo (VBS)',
+    description: 'Desabilita a Integridade da Memória (Virtualization-Based Security), reduzindo overhead do sistema para mais FPS em jogos.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    requiresReboot: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
@@ -2142,18 +2142,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "Enabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
@@ -2164,10 +2164,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity"
@@ -2179,20 +2179,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'optimize-windowed-games',
-  category: 'Gaming',
-  title: 'Otimizar Jogos em Janela (Beta)',
-  description: 'Habilita apresentação moderna do DWM para reduzir latência em jogos executados em janela sem borda.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'optimize-windowed-games',
+    category: 'Gaming',
+    title: 'Otimizar Jogos em Janela (Beta)',
+    description: 'Habilita apresentação moderna do DWM para reduzir latência em jogos executados em janela sem borda.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
@@ -2206,18 +2206,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "DirectXUserGlobalSettings" -PropertyType String -Value "SwapEffectUpgradeEnable=1;" -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
@@ -2228,10 +2228,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 'SwapEffectUpgradeEnable=1;' }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 'SwapEffectUpgradeEnable=1;' }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences"
@@ -2243,20 +2243,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'menu-show-delay',
-  category: 'Performance',
-  title: 'Eliminar Atraso de Menus',
-  description: 'Faz submenus abrirem instantaneamente, removendo o atraso padrão de 400ms do Windows.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'menu-show-delay',
+    category: 'Performance',
+    title: 'Eliminar Atraso de Menus',
+    description: 'Faz submenus abrirem instantaneamente, removendo o atraso padrão de 400ms do Windows.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Control Panel\\Desktop"
@@ -2270,18 +2270,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Control Panel\\Desktop"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "MenuShowDelay" -PropertyType String -Value "0" -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Control Panel\\Desktop"
@@ -2292,10 +2292,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: '0' }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: '0' }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Control Panel\\Desktop"
@@ -2307,20 +2307,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'enable-end-task',
-  category: 'Performance',
-  title: 'Habilitar "Finalizar Tarefa" na Barra de Tarefas',
-  description: 'Permite encerrar processos travados clicando com o botão direito diretamente na barra de tarefas, sem abrir o Gerenciador de Tarefas.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'enable-end-task',
+    category: 'Performance',
+    title: 'Habilitar "Finalizar Tarefa" na Barra de Tarefas',
+    description: 'Permite encerrar processos travados clicando com o botão direito diretamente na barra de tarefas, sem abrir o Gerenciador de Tarefas.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
@@ -2334,9 +2334,9 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
@@ -2346,9 +2346,9 @@ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 Start-Process explorer.exe
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
@@ -2359,10 +2359,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\\TaskbarDeveloperSettings"
@@ -2377,21 +2377,21 @@ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 Start-Process explorer.exe
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'dark-mode',
-  category: 'Performance',
-  title: 'Ativar Modo Escuro',
-  description: 'Aplica o tema escuro nos aplicativos e no sistema.',
-  risk: 'low',
-  requiresAdmin: false,
-  createsBackup: true,
-  requiresReboot: true,
-  engine: 'snapshot',
-  read: {
-    script:  `
+  {
+    id: 'dark-mode',
+    category: 'Performance',
+    title: 'Ativar Modo Escuro',
+    description: 'Aplica o tema escuro nos aplicativos e no sistema.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    requiresReboot: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Read-RegValue($path, $name) {
@@ -2413,9 +2413,9 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
@@ -2433,9 +2433,9 @@ try {
   exit 1
 }
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Read-RegValue($path, $name) {
@@ -2457,10 +2457,10 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: { AppsUseLightTheme: 0, SystemUsesLightTheme: 0, ColorPrevalence: 1 } }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: { AppsUseLightTheme: 0, SystemUsesLightTheme: 0, ColorPrevalence: 1 } }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 function Restore-RegValue($path, $name, $val) {
@@ -2491,20 +2491,20 @@ try {
   exit 1
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-copilot',
-  category: 'Privacidade',
-  title: 'Desativar Copilot',
-  description: 'Remove a integração do assistente Copilot via política de registro.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-copilot',
+    category: 'Privacidade',
+    title: 'Desativar Copilot',
+    description: 'Remove a integração do assistente Copilot via política de registro.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
@@ -2518,18 +2518,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "TurnOffWindowsCopilot" -PropertyType DWord -Value 1 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
@@ -2540,10 +2540,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 1 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 1 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot"
@@ -2555,20 +2555,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-fast-startup',
-  category: 'Performance',
-  title: 'Desativar Inicialização Rápida',
-  description: 'Força o Windows a desligar/reiniciar completamente, evitando bugs de memória e acúmulo de uptime.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-fast-startup',
+    category: 'Performance',
+    title: 'Desativar Inicialização Rápida',
+    description: 'Força o Windows a desligar/reiniciar completamente, evitando bugs de memória e acúmulo de uptime.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
@@ -2582,18 +2582,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "HiberbootEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
@@ -2604,10 +2604,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 0 }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power"
@@ -2619,20 +2619,20 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
-{
-  id: 'disable-location-tracking',
-  category: 'Privacidade',
-  title: 'Desativar Rastreamento de Localização',
-  description: 'Impede a coleta contínua de geolocalização pelo Windows.',
-  risk: 'low',
-  requiresAdmin: true,
-  createsBackup: true,
-  engine: 'snapshot',
-  read: {
-    script: `
+  {
+    id: 'disable-location-tracking',
+    category: 'Privacidade',
+    title: 'Desativar Rastreamento de Localização',
+    description: 'Impede a coleta contínua de geolocalização pelo Windows.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
@@ -2646,18 +2646,18 @@ try {
   [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
 }
     `
-  },
-  apply: {
-    script: `
+    },
+    apply: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
 if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
 New-ItemProperty -LiteralPath $path -Name "Value" -PropertyType String -Value "Deny" -Force -ErrorAction Stop
     `
-  },
-  verify: {
-    script: `
+    },
+    verify: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
@@ -2668,10 +2668,10 @@ try {
   [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
 }
     `,
-    expected: { exists: true, value: 'Deny' }
-  },
-  restore: {
-    script: `
+      expected: { exists: true, value: 'Deny' }
+    },
+    restore: {
+      script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $path = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
@@ -2683,9 +2683,424 @@ if ($snapshotExists -eq $true) {
   Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
 }
     `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
-  commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
-},
+  {
+    id: 'restore-classic-context-menu',
+    category: 'Performance',
+    title: 'Menu de Contexto Clássico (Windows 11)',
+    description: 'Remove o "Mostrar mais opções" e restaura o menu de botão direito completo do Windows 10.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32"
+try {
+  if (-not (Test-Path -LiteralPath $path)) {
+    [PSCustomObject]@{ success = $true; exists = $false; value = $null } | ConvertTo-Json -Compress
+    exit 0
+  }
+  $item = Get-ItemProperty -LiteralPath $path -ErrorAction SilentlyContinue
+  $val = if ($null -ne $item -and $null -ne $item.'(default)') { $item.'(default)' } else { '' }
+  [PSCustomObject]@{ success = $true; exists = $true; value = [string]$val } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $path = "HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32"
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  Set-Item -Path $path -Value "" -ErrorAction Stop
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -ErrorAction SilentlyContinue
+  $val = if ($null -ne $item -and $null -ne $item.'(default)') { $item.'(default)' } else { '' }
+  [PSCustomObject]@{ success = $true; exists = $true; value = [string]$val } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true, value: '' }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32"
+try {
+  if ($snapshotExists -eq $true) {
+    if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+    Set-Item -Path $path -Value $snapshotValue -ErrorAction Stop
+  } else {
+    Remove-Item -Path "HKCU:\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
+  {
+    id: 'disable-wifi-sense',
+    category: 'Privacidade',
+    title: 'Desativar WiFi Sense',
+    description: 'Impede o compartilhamento automático de senhas de redes Wi-Fi com contatos e redes sociais.',
+    risk: 'low',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $autoPath = "HKLM:\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config"
+  $sensePath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WiFiSense"
+  $result = [ordered]@{
+    AutoConnectAllowedOEM = Read-RegValue $autoPath "AutoConnectAllowedOEM"
+    AutoConnectAllowed    = Read-RegValue $autoPath "AutoConnectAllowed"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $autoPath = "HKLM:\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config"
+  if (-not (Test-Path $autoPath)) { New-Item -Path $autoPath -Force | Out-Null }
+  New-ItemProperty -LiteralPath $autoPath -Name "AutoConnectAllowedOEM" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $autoPath -Name "AutoConnectAllowed"    -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $autoPath = "HKLM:\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config"
+  $result = [ordered]@{
+    AutoConnectAllowedOEM = Read-RegValue $autoPath "AutoConnectAllowedOEM"
+    AutoConnectAllowed    = Read-RegValue $autoPath "AutoConnectAllowed"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true, value: { AutoConnectAllowedOEM: 0, AutoConnectAllowed: 0 } }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) { Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $val -Force -ErrorAction Stop | Out-Null
+  }
+}
+try {
+  $autoPath = "HKLM:\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config"
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue $autoPath "AutoConnectAllowedOEM" $snapshotValue.AutoConnectAllowedOEM
+    Restore-RegValue $autoPath "AutoConnectAllowed"    $snapshotValue.AutoConnectAllowed
+  } else {
+    Remove-ItemProperty -Path $autoPath -Name "AutoConnectAllowedOEM" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $autoPath -Name "AutoConnectAllowed" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
+  {
+    id: 'disable-lock-screen-tips',
+    category: 'Privacidade',
+    title: 'Desativar Dicas da Tela de Bloqueio',
+    description: 'Remove sugestões, anúncios e imagens rotativas da tela de bloqueio (Windows Spotlight).',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $p = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+  $result = [ordered]@{
+    SubscribedContent338387Enabled = Read-RegValue $p "SubscribedContent-338387Enabled"
+    SoftLandingEnabled             = Read-RegValue $p "SoftLandingEnabled"
+    RotatingLockScreenOverlayEnabled = Read-RegValue $p "RotatingLockScreenOverlayEnabled"
+    RotatingLockScreenEnabled      = Read-RegValue $p "RotatingLockScreenEnabled"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $p = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+  if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
+  New-ItemProperty -LiteralPath $p -Name "SubscribedContent-338387Enabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $p -Name "SoftLandingEnabled"              -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $p -Name "RotatingLockScreenOverlayEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -LiteralPath $p -Name "RotatingLockScreenEnabled"       -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $p = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+  $result = [ordered]@{
+    SubscribedContent338387Enabled = Read-RegValue $p "SubscribedContent-338387Enabled"
+    SoftLandingEnabled             = Read-RegValue $p "SoftLandingEnabled"
+    RotatingLockScreenOverlayEnabled = Read-RegValue $p "RotatingLockScreenOverlayEnabled"
+    RotatingLockScreenEnabled      = Read-RegValue $p "RotatingLockScreenEnabled"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: {
+        exists: true,
+        value: {
+          SubscribedContent338387Enabled: 0,
+          SoftLandingEnabled: 0,
+          RotatingLockScreenOverlayEnabled: 0,
+          RotatingLockScreenEnabled: 0
+        }
+      }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    if (Test-Path -LiteralPath $path) { Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue }
+  } else {
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $val -Force -ErrorAction Stop | Out-Null
+  }
+}
+try {
+  $p = "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager"
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue $p "SubscribedContent-338387Enabled"   $snapshotValue.SubscribedContent338387Enabled
+    Restore-RegValue $p "SoftLandingEnabled"                 $snapshotValue.SoftLandingEnabled
+    Restore-RegValue $p "RotatingLockScreenOverlayEnabled"   $snapshotValue.RotatingLockScreenOverlayEnabled
+    Restore-RegValue $p "RotatingLockScreenEnabled"          $snapshotValue.RotatingLockScreenEnabled
+  } else {
+    Remove-ItemProperty -Path $p -Name "SubscribedContent-338387Enabled" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $p -Name "SoftLandingEnabled" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $p -Name "RotatingLockScreenOverlayEnabled" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $p -Name "RotatingLockScreenEnabled" -ErrorAction SilentlyContinue
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
+  {
+    id: 'services-manual-profile',
+    category: 'Performance',
+    title: 'Serviços em Segundo Plano → Manual',
+    description: 'Define como Manual um conjunto curado de serviços do Windows pouco usados (Fax, Sensores, Geolocalização), reduzindo consumo em background.',
+    risk: 'medium',
+    requiresAdmin: true,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Convert-StartMode($mode) {
+  switch ($mode) {
+    'Auto' { 'Automatic' }
+    'Manual' { 'Manual' }
+    'Disabled' { 'Disabled' }
+    default { 'Manual' }
+  }
+}
+try {
+  $serviceNames = @('Fax','RemoteRegistry','lfsvc','TabletInputService','WerSvc')
+  $result = [ordered]@{}
+  $anyFound = $false
+  foreach ($name in $serviceNames) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+      $result[$name] = $null
+    } else {
+      $anyFound = $true
+      $result[$name] = [ordered]@{ StartupType = (Convert-StartMode $svc.StartMode) }
+    }
+  }
+  [PSCustomObject]@{ success=$true; exists=$anyFound; value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $serviceNames = @('Fax','RemoteRegistry','lfsvc','TabletInputService','WerSvc')
+  foreach ($name in $serviceNames) {
+    $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+    if ($null -ne $svc) {
+      if ($svc.Status -eq 'Running') { Stop-Service -Name $name -Force -ErrorAction SilentlyContinue }
+      Set-Service -Name $name -StartupType Manual -ErrorAction Stop
+    }
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Convert-StartMode($mode) {
+  switch ($mode) {
+    'Auto' { 'Automatic' }
+    'Manual' { 'Manual' }
+    'Disabled' { 'Disabled' }
+    default { 'Manual' }
+  }
+}
+try {
+  $serviceNames = @('Fax','RemoteRegistry','lfsvc','TabletInputService','WerSvc')
+  $result = [ordered]@{}
+  $anyFound = $false
+  foreach ($name in $serviceNames) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    if ($null -eq $svc) {
+      $result[$name] = $null
+    } else {
+      $anyFound = $true
+      $result[$name] = [ordered]@{ StartupType = (Convert-StartMode $svc.StartMode) }
+    }
+  }
+  [PSCustomObject]@{ success=$true; exists=$anyFound; value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  if ($snapshotExists -eq $true) {
+    $serviceNames = @('Fax','RemoteRegistry','lfsvc','TabletInputService','WerSvc')
+    foreach ($name in $serviceNames) {
+      $original = $snapshotValue.$name
+      if ($null -ne $original -and $null -ne $original.StartupType) {
+        Set-Service -Name $name -StartupType $original.StartupType -ErrorAction SilentlyContinue
+      }
+    }
+  }
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
 
 ];
 
