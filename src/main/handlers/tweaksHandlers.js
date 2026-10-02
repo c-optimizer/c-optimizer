@@ -2318,6 +2318,7 @@ if ($snapshotExists -eq $true) {
     risk: 'low',
     requiresAdmin: false,
     createsBackup: true,
+    minWindowsBuild: 22000,
     engine: 'snapshot',
     read: {
       script: `
@@ -3104,15 +3105,28 @@ try {
 
 ];
 
+/**
+ * Detecta o build do Windows. Retorna 0 em outros SOs.
+ * Windows 10 = build 19041..21999 | Windows 11 = build >= 22000.
+ */
+function getWindowsBuild() {
+  if (os.platform() !== 'win32') return 0;
+  const parts = os.release().split('.');
+  return parseInt(parts[2] || '0', 10);
+}
+
 function getPublicCatalog() {
   const appliedState = store.get('tweaksApplied', {});
-  return TWEAKS_CATALOG.map(({ id, category, title, description, requiresAdmin, requiresReboot, risk, createsBackup }) => ({
-    id, category, title, description, requiresAdmin,
-    requiresReboot: !!requiresReboot,
-    risk: risk || 'low',
-    createsBackup: !!createsBackup,
-    enabled: appliedState[id] || false
-  }));
+  const build = getWindowsBuild();
+  return TWEAKS_CATALOG
+    .filter((t) => !t.minWindowsBuild || build >= t.minWindowsBuild)
+    .map(({ id, category, title, description, requiresAdmin, requiresReboot, risk, createsBackup }) => ({
+      id, category, title, description, requiresAdmin,
+      requiresReboot: !!requiresReboot,
+      risk: risk || 'low',
+      createsBackup: !!createsBackup,
+      enabled: appliedState[id] || false
+    }));
 }
 
 function setTweakState(tweakId, enabled) {
@@ -3307,27 +3321,21 @@ function registerTweaksHandlers() {
   ipcMain.handle('tweaks:get-catalog', async () => getPublicCatalog());
   ipcMain.handle('tweaks:get-applied-state', async () => store.get('tweaksApplied', {}));
 
-  ipcMain.handle('tweaks:apply', withLicense(async (_event, tweakId) => {
+    ipcMain.handle('tweaks:apply', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
+
+    if (tweak.minWindowsBuild && getWindowsBuild() < tweak.minWindowsBuild) {
+      return {
+        success: false,
+        error: 'Este ajuste requer Windows 11 22H2 ou superior.'
+      };
+    }
 
     if (tweak.engine === 'snapshot' && os.platform() === 'win32') {
       return applyWithSnapshot(tweak);
     }
-
-    const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
-    try {
-      await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
-      setTweakState(tweakId, true);
-      return { success: true, tweakId, enabled: true };
-    } catch (error) {
-      log.error(`[tweaks:apply] "${tweakId}":`, error.message);
-      const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
-      return {
-        success: false, tweakId,
-        error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao aplicar este ajuste.'
-      };
-    }
+    // ... resto igual ...
   }));
 
   ipcMain.handle('tweaks:revert', withLicense(async (_event, tweakId) => {

@@ -322,7 +322,7 @@ function OptimizationsView() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((tweak) => (
-              <div key={tweak.id} className="flex flex-col gap-1.5">
+              <div key={tweak.id} className="flex flex-col gap-1.5 h-full">
                 <CardOption
                   icon={ICON_MAP[tweak.id]}
                   title={tweak.title}
