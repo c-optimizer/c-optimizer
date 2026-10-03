@@ -7,6 +7,25 @@ const { withLicense } = require('../utils/licenseGuard');
 const store = require('../store');
 const { log } = require('../utils/logger');
 
+/**
+ * Padrões de arquivos/pastas dentro de %TEMP% que NUNCA devem ser apagados
+ * enquanto o app está rodando. São arquivos ativos do próprio Electron,
+ * do Chromium renderer, ou do Vite — apagá-los mata o renderer em tempo real.
+ */
+const TEMP_SKIP_PATTERNS = [
+  /^electron-/i,
+  /^scoped_dir/i,
+  /^chrome_/i,
+  /^\.org\.chromium\./i,
+  /^crashpad/i,
+  /^puppeteer_dev_chrome/i,
+  /^vite-/i,
+  /^squirrel-/i,
+  /^c_opt_/i,          // scripts temporários do próprio app
+];
+
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
 async function clearDirectoryContents(dirPath) {
   let freedBytes = 0;
   let skippedCount = 0;
@@ -24,6 +43,59 @@ async function clearDirectoryContents(dirPath) {
       const stat = await fs.stat(fullPath);
       if (entry.isDirectory()) {
         const sub = await clearDirectoryContents(fullPath);
+        freedBytes += sub.freedBytes;
+        skippedCount += sub.skippedCount;
+        await fs.rmdir(fullPath).catch(() => {});
+      } else {
+        freedBytes += stat.size;
+        await fs.unlink(fullPath);
+      }
+    } catch {
+      skippedCount += 1;
+    }
+  }
+
+  return { freedBytes, skippedCount };
+}
+
+/**
+ * Versão "safe" para %TEMP% — aplica dois filtros:
+ * 1) Ignora pastas/arquivos do Electron/Chromium/Vite (TEMP_SKIP_PATTERNS).
+ * 2) Ignora qualquer coisa modificada nos últimos 5 minutos (ainda em uso).
+ *
+ * Sem esses filtros, o cleanup mata o próprio renderer do app.
+ */
+async function clearTempContents(dirPath) {
+  let freedBytes = 0;
+  let skippedCount = 0;
+  const now = Date.now();
+
+  let entries;
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return { freedBytes: 0, skippedCount: 0 };
+  }
+
+  for (const entry of entries) {
+    // Filtro 1 — nome bate em algum padrão ativo.
+    if (TEMP_SKIP_PATTERNS.some((re) => re.test(entry.name))) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const fullPath = path.join(dirPath, entry.name);
+    try {
+      const stat = await fs.stat(fullPath);
+
+      // Filtro 2 — modificado nos últimos 5 minutos (pode estar em uso).
+      if (now - stat.mtimeMs < FIVE_MINUTES_MS) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        const sub = await clearTempContents(fullPath); // recursão com os mesmos filtros
         freedBytes += sub.freedBytes;
         skippedCount += sub.skippedCount;
         await fs.rmdir(fullPath).catch(() => {});
@@ -66,11 +138,11 @@ try {
 }
 
 const CLEANUP_TARGETS = {
-  temp: {
+   temp: {
     id: 'temp',
     label: '%temp%',
     async run() {
-      return clearDirectoryContents(os.tmpdir());
+      return clearTempContents(os.tmpdir());
     }
   },
   prefetch: {
@@ -120,7 +192,10 @@ Start-Service -Name wuauserv -ErrorAction SilentlyContinue
 
       for (const variant of variants) {
         const basePath = path.join(appData, variant);
-        const subfolders = ['Cache', 'Code Cache', 'GPUCache', 'Local Storage', 'Session Storage'];
+                // NUNCA incluir 'Local Storage', 'Session Storage', 'Network',
+        // 'Local State' — contêm o token de autenticação do usuário.
+        // Apagar essas pastas desloga a conta no próximo restart do Discord.
+        const subfolders = ['Cache', 'Code Cache', 'GPUCache'];
         for (const sub of subfolders) {
           const result = await clearDirectoryContents(path.join(basePath, sub));
           totalFreed += result.freedBytes;

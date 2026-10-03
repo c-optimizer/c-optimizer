@@ -45,6 +45,7 @@ const validInvokeChannels = [
   'winget:check-installed',
   'winget:get-catalog',
   'winget:install',
+  'winget:open-installer',
 
   // Configurações
   'settings:get',

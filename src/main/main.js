@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { log } = require('./utils/logger');
@@ -113,6 +113,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+      // Remove a menu bar nativa (File/Edit/View/Window/Help) do Electron.
+    // Sem isso, ela aparece ao pressionar Alt/Ctrl+Alt e dá aparência de
+    // "app não finalizado" — o C-Optimizer tem menu próprio na sidebar.
+    Menu.setApplicationMenu(null);
   registerSystemHandlers();
   registerTweaksHandlers();
   registerCleanupHandlers();

@@ -17,6 +17,8 @@ function InstallTab() {
   const [logs, setLogs] = useState([]);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+    const [openingStore, setOpeningStore] = useState(false);
+  const [storeError, setStoreError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,6 +74,22 @@ function InstallTab() {
   const selectedIds = Object.keys(selected).filter((id) => selected[id]);
   const anySelected = selectedIds.length > 0;
 
+  const handleOpenInstaller = async () => {
+    setOpeningStore(true);
+    setStoreError(null);
+    try {
+      const result = await window.electronAPI.invoke('winget:open-installer');
+      if (!result.success) {
+        setStoreError(result.error || 'Não foi possível abrir a Microsoft Store.');
+      }
+    } catch (error) {
+      setStoreError(error.message);
+    } finally {
+      setOpeningStore(false);
+      setTimeout(() => setStoreError(null), 5000);
+    }
+  };
+
   const handleInstall = async () => {
     if (selectedIds.length === 0) return;
 
@@ -101,18 +119,29 @@ function InstallTab() {
     }
   };
 
-  if (!wingetAvailable) {
+      if (!wingetAvailable) {
     return (
       <div className="flex flex-col items-center gap-3 py-14 bg-c-surface border border-dashed border-c-border rounded-xl">
         <AlertCircle size={22} className="text-c-danger" />
         <p className="text-slate-300 text-sm font-medium">winget não encontrado neste sistema</p>
         <p className="text-slate-500 text-xs text-center max-w-md">
-          Instale ou atualize o "Instalador de Aplicativos" pela Microsoft Store para usar este módulo.
+          O winget faz parte do pacote <span className="text-slate-300 font-medium">"Instalador de Aplicativos"</span> da Microsoft Store.
+          Instale-o abaixo para habilitar este módulo.
         </p>
+        <button
+          onClick={handleOpenInstaller}
+          disabled={openingStore}
+          className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
+        >
+          {openingStore ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {openingStore ? 'Abrindo Store...' : 'Instalar App Installer'}
+        </button>
+        {storeError && (
+          <p className="text-c-danger text-xs">{storeError}</p>
+        )}
       </div>
     );
   }
-
   return (
     <div className="flex flex-col gap-6">
       {successMsg && (

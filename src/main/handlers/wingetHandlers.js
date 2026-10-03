@@ -1,6 +1,8 @@
-const { ipcMain, BrowserWindow } = require('electron');
+const { ipcMain, BrowserWindow, shell } = require('electron');
 const { spawn, execSync } = require('child_process');
 const os = require('os');
+const path = require('path');
+const fs = require('fs');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
 
@@ -19,13 +21,28 @@ const WINGET_CATALOG = [
   { id: '7zip.7zip', name: '7-Zip', category: 'Utilitários' }
 ];
 
+/**
+ * Detecta o winget em múltiplos locais. O `execSync('winget --version')`
+ * falha silenciosamente em alguns Windows 10 com PATH mal configurado,
+ * mesmo quando o winget está instalado em %LOCALAPPDATA%\Microsoft\WindowsApps.
+ */
 function isWingetAvailable() {
+  // 1) PATH global.
   try {
     execSync('winget --version', { stdio: 'ignore', windowsHide: true });
     return true;
-  } catch {
-    return false;
+  } catch { /* continua */ }
+
+  // 2) Path padrão do App Installer no Windows 10/11.
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData) {
+    const candidate = path.join(localAppData, 'Microsoft', 'WindowsApps', 'winget.exe');
+    try {
+      if (fs.existsSync(candidate)) return true;
+    } catch { /* continua */ }
   }
+
+  return false;
 }
 
 function installApp(appId, window) {
@@ -43,6 +60,7 @@ function installApp(appId, window) {
     child.stderr?.on('data', emit);
 
     child.on('close', (code) => {
+      // 0 = sucesso. -1978335189 = "já instalado" (não é erro).
       if (code === 0 || code === -1978335189) resolve({ appId, success: true });
       else resolve({ appId, success: false, error: `winget saiu com código ${code}` });
     });
@@ -50,7 +68,7 @@ function installApp(appId, window) {
     child.on('error', (err) => {
       log.error(`[winget] Erro ao instalar "${appId}":`, err.message);
       resolve({ appId, success: false, error: err.message });
-});
+    });
   });
 }
 
@@ -62,13 +80,32 @@ function registerWingetHandlers() {
 
   ipcMain.handle('winget:get-catalog', async () => WINGET_CATALOG);
 
+  // Abre a página do "App Installer" na Microsoft Store. É o pacote que
+  // fornece o winget no Windows 10. O `ms-windows-store://` é um protocolo
+  // registrado pelo próprio Windows, não precisa de permissão especial.
+  ipcMain.handle('winget:open-installer', withLicense(async () => {
+    if (os.platform() !== 'win32') {
+      return { success: false, error: 'Disponível apenas no Windows.' };
+    }
+    try {
+      await shell.openExternal('ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1');
+      return { success: true };
+    } catch (err) {
+      log.error('[winget:open-installer] Falha ao abrir Store:', err.message);
+      return { success: false, error: 'Não foi possível abrir a Microsoft Store.' };
+    }
+  }));
+
   ipcMain.handle('winget:install', withLicense(async (event, appIds) => {
     if (!Array.isArray(appIds) || appIds.length === 0) return { success: false, error: 'Nenhum aplicativo selecionado.' };
     if (os.platform() !== 'win32') return { success: false, error: 'Disponível apenas no Windows.' };
     if (!isWingetAvailable()) {
-  log.error('[winget:install] winget não encontrado no PATH.');
-  return { success: false, error: 'winget não foi encontrado no PATH deste sistema. Atualize o App Installer pela Microsoft Store.' };
-  }
+      log.error('[winget:install] winget não encontrado.');
+      return {
+        success: false,
+        error: 'winget não encontrado neste sistema. Instale o "App Installer" pela Microsoft Store para habilitar este módulo.'
+      };
+    }
 
     const window = BrowserWindow.fromWebContents(event.sender);
     const results = [];
