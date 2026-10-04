@@ -97,34 +97,63 @@ async function uninstallBatch(packageFullNames) {
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $results = @()
 $packages = @(${escapedList})
+
+# Uma única chamada para enumerar TODOS os packages instalados.
+# Antes era chamado 1x por package dentro do loop (lento e estourava timeout).
+$installed = @{}
+try {
+  Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($_.PackageFullName) { $installed[$_.PackageFullName] = $true }
+  }
+} catch {}
+
+# Fallback: se -AllUsers falhou (ex: sem admin), tenta sem -AllUsers.
+if ($installed.Count -eq 0) {
+  try {
+    Get-AppxPackage -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.PackageFullName) { $installed[$_.PackageFullName] = $true }
+    }
+  } catch {}
+}
+
 foreach ($pkg in $packages) {
-  $existing = Get-AppxPackage -AllUsers | Where-Object { $_.PackageFullName -eq $pkg }
-  if ($null -eq $existing) {
+  if (-not $installed.ContainsKey($pkg)) {
     $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $true }
     continue
   }
 
-  $packageName = $existing.Name
+  $removed = $false
+  $lastError = $null
 
+  # Tentativa 1: remove apenas para o usuário atual (mais confiável).
   try {
     Remove-AppxPackage -Package $pkg -ErrorAction Stop
-    # Etapa "bônus": remove o provisionamento para novas contas, mas não
-    # deixa isso derrubar o resultado se falhar.
+    $removed = $true
+  } catch {
+    $lastError = $_.Exception.Message
+
+    # Tentativa 2: remove para todos os usuários.
+    try {
+      Remove-AppxPackage -Package $pkg -AllUsers -ErrorAction Stop
+      $removed = $true
+      $lastError = $null
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+  }
+
+  if ($removed) {
+    # Etapa "bônus": remove provisionamento para contas futuras.
+    # Falha aqui NÃO invalida a remoção principal.
     try {
       Remove-AppxProvisionedPackage -Online -PackageName $pkg -ErrorAction SilentlyContinue | Out-Null
     } catch {}
     $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $false }
-  } catch {
-    # Fallback: tenta -AllUsers como segunda tentativa, caso o erro tenha
-    # sido de outra natureza que -AllUsers resolveria.
-    try {
-      Remove-AppxPackage -Package $pkg -AllUsers -ErrorAction Stop
-      $results += [PSCustomObject]@{ Package = $pkg; Success = $true; Skipped = $false }
-    } catch {
-      $results += [PSCustomObject]@{ Package = $pkg; Success = $false; Skipped = $false; Error = $_.Exception.Message }
-    }
+  } else {
+    $results += [PSCustomObject]@{ Package = $pkg; Success = $false; Skipped = $false; Error = $lastError }
   }
 }
+
 $__resultJson = $results | ConvertTo-Json -Compress
 `.trim();
 
@@ -133,12 +162,12 @@ $__resultJson = $results | ConvertTo-Json -Compress
       '$__resultJson = $results | ConvertTo-Json -Compress',
       '$results | ConvertTo-Json -Compress'
     );
-    const { stdout } = await runShellCommand(inlineScript, 40000);
+    const { stdout } = await runShellCommand(inlineScript, 300000);   // 5 min
     const parsed = JSON.parse((stdout || '[]').trim());
     return Array.isArray(parsed) ? parsed : [parsed];
   }
 
-  const result = await runElevatedScriptWithOutput(scriptBody, 60000);
+  const result = await runElevatedScriptWithOutput(scriptBody, 300000);  // 5 min
   return Array.isArray(result) ? result : [result];
 }
 

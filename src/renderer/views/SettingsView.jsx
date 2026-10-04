@@ -23,7 +23,6 @@ function SettingsView() {
   const [revertError, setRevertError] = useState(null);
 
   const [notifications, setNotifications] = useState(true);
-  const [testingNotif, setTestingNotif] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [changelog, setChangelog] = useState([]);
   const [loadingChangelog, setLoadingChangelog] = useState(false);
@@ -237,21 +236,7 @@ function SettingsView() {
         </button>
       </div>
 
-      {/* Notificações */}
-      <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-slate-200 font-semibold">
-          <Bell size={16} className="text-c-secondary" />
-          Notificações
-        </div>
-        <button
-          onClick={handleTestNotification}
-          disabled={testingNotif}
-          className="self-start flex items-center gap-2 px-4 py-2 rounded-lg border border-c-secondary/40 text-c-secondary text-sm font-medium hover:bg-c-secondary/10 transition-colors disabled:opacity-50"
-        >
-          {testingNotif ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
-          Testar Notificação
-        </button>
-      </div>
+      
 
       {/* Notas de Atualização */}
       <div className="bg-c-surface border border-c-border rounded-xl p-5 flex flex-col gap-3">

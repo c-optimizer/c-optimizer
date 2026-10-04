@@ -1,4 +1,4 @@
-const { ipcMain } = require('electron');
+const { ipcMain, BrowserWindow } = require('electron');
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
@@ -323,7 +323,7 @@ function registerCleanupHandlers() {
     return { estimatedBytes: tempSize };
   });
 
-  ipcMain.handle('cleanup:execute', withLicense(async (_event, targetIds) => {
+  ipcMain.handle('cleanup:execute', withLicense(async (event, targetIds) => {
     if (!Array.isArray(targetIds) || targetIds.length === 0) {
       return { success: false, error: 'Nenhum alvo de limpeza selecionado.' };
     }
@@ -352,6 +352,20 @@ function registerCleanupHandlers() {
 
     const now = new Date().toISOString();
     store.set('lastCleanupAt', now);
+
+    // Alguns targets (font-cache, thumbnail-cache) mexem com serviços do
+    // sistema ou matam o Explorer — o renderer do Electron pode ficar em
+    // tela preta após o cleanup. Recarregamos depois de 2.5s para dar tempo
+    // do usuário ver o resultado na UI antes do reload.
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+      setTimeout(() => {
+        if (!win.isDestroyed()) {
+          log.info('[cleanup] Recarregando renderer após cleanup.');
+          win.webContents.reload();
+        }
+      }, 2500);
+    }
 
     return { success: !hadError, results, totalFreedBytes, lastCleanupAt: now };
   }));
