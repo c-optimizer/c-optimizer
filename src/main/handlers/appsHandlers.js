@@ -26,7 +26,31 @@ const BLOATWARE_CATALOG = [
   { match: 'Microsoft.WindowsFeedbackHub', label: 'Central de Feedback' },
   { match: 'Microsoft.WindowsMaps', label: 'Mapas' },
   { match: 'Microsoft.WindowsSoundRecorder', label: 'Gravador de Voz' },
-  { match: 'Microsoft.MicrosoftStickyNotes', label: 'Notas Adesivas' }
+  { match: 'Microsoft.MicrosoftStickyNotes', label: 'Notas Adesivas' },
+    // Extra — apps comuns de bloatware em builds atuais
+  { match: 'Microsoft.WindowsAlarms', label: 'Alarmes e Relógio' },
+  { match: 'Microsoft.WindowsCalculator', label: 'Calculadora (se não usa)' },
+  { match: 'Microsoft.WindowsCamera', label: 'Câmera' },
+  { match: 'Microsoft.WindowsCommunicationsApps', label: 'Mail e Calendário' },
+  { match: 'Microsoft.WindowsFeedbackHub', label: 'Central de Feedback' },
+  { match: 'Microsoft.MicrosoftOfficeHub', label: 'Hub do Office' },
+  { match: 'Microsoft.OneConnect', label: 'One Connect (recarga de celular)' },
+  { match: 'Microsoft.Print3D', label: 'Impressão 3D' },
+  { match: 'Microsoft.Microsoft3DViewer', label: 'Visualizador 3D' },
+  { match: 'Microsoft.MSPaint', label: 'Paint 3D' },
+  { match: 'Microsoft.ScreenSketch', label: 'Ferramenta de Captura (se não usa)' },
+  { match: 'Microsoft.Todos', label: 'Microsoft To Do' },
+  { match: 'Microsoft.PowerAutomateDesktop', label: 'Power Automate' },
+  { match: 'Microsoft.WindowsMaps', label: 'Mapas' },
+  { match: 'Microsoft.BingWeather', label: 'Clima (Bing)' },
+  { match: 'Microsoft.BingNews', label: 'Notícias (Bing)' },
+  { match: 'Microsoft.BingFinance', label: 'Finanças (Bing)' },
+  { match: 'Microsoft.BingSports', label: 'Esportes (Bing)' },
+  { match: 'Microsoft.GamingApp', label: 'Xbox App (nova versão)' },
+  { match: 'MicrosoftTeams', label: 'Microsoft Teams (pessoal)' },
+  { match: 'Microsoft.OutlookForWindows', label: 'Outlook (novo)' },
+  { match: 'Clipchamp.Clipchamp', label: 'Clipchamp' },
+  { match: 'Microsoft.Family', label: 'Microsoft Family' }
 ];
 
 async function listInstalledBloatware() {

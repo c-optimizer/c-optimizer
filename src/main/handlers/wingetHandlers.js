@@ -7,18 +7,52 @@ const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
 
 const WINGET_CATALOG = [
+  // Runtimes
   { id: 'Microsoft.VCRedist.2015+.x64', name: 'Visual C++ Redistributable (x64)', category: 'Runtimes' },
   { id: 'Microsoft.VCRedist.2015+.x86', name: 'Visual C++ Redistributable (x86)', category: 'Runtimes' },
   { id: 'Microsoft.DotNet.DesktopRuntime.8', name: '.NET Desktop Runtime 8', category: 'Runtimes' },
+  { id: 'Microsoft.DotNet.DesktopRuntime.6', name: '.NET Desktop Runtime 6', category: 'Runtimes' },
   { id: 'Microsoft.DirectX', name: 'DirectX End-User Runtime', category: 'Runtimes' },
+  { id: 'Microsoft.WindowsDesktopApp.Runtime', name: 'Windows Desktop Runtime', category: 'Runtimes' },
+
+  // Navegadores
   { id: 'Google.Chrome', name: 'Google Chrome', category: 'Navegadores' },
+  { id: 'Mozilla.Firefox', name: 'Mozilla Firefox', category: 'Navegadores' },
   { id: 'Brave.Brave', name: 'Brave Browser', category: 'Navegadores' },
+  { id: 'Opera.OperaGX', name: 'Opera GX', category: 'Navegadores' },
+
+  // Comunicação
   { id: 'Discord.Discord', name: 'Discord', category: 'Comunicação' },
+  { id: 'WhatsApp.WhatsApp', name: 'WhatsApp Desktop', category: 'Comunicação' },
+  { id: 'Telegram.TelegramDesktop', name: 'Telegram Desktop', category: 'Comunicação' },
+  { id: 'Zoom.Zoom', name: 'Zoom', category: 'Comunicação' },
+  { id: 'SlackTechnologies.Slack', name: 'Slack', category: 'Comunicação' },
+  { id: 'Microsoft.Teams', name: 'Microsoft Teams', category: 'Comunicação' },
+
+  // Mídia
   { id: 'OBSProject.OBSStudio', name: 'OBS Studio', category: 'Mídia' },
   { id: 'VideoLAN.VLC', name: 'VLC Media Player', category: 'Mídia' },
+  { id: 'Spotify.Spotify', name: 'Spotify', category: 'Mídia' },
+  { id: 'GIMP.GIMP', name: 'GIMP', category: 'Mídia' },
+  { id: 'Audacity.Audacity', name: 'Audacity', category: 'Mídia' },
+
+  // Jogos
   { id: 'Valve.Steam', name: 'Steam', category: 'Jogos' },
+  { id: 'EpicGames.EpicGamesLauncher', name: 'Epic Games Launcher', category: 'Jogos' },
+  { id: 'GOG.Galaxy', name: 'GOG Galaxy', category: 'Jogos' },
   { id: 'Nvidia.GeForceExperience', name: 'NVIDIA GeForce Experience', category: 'Jogos' },
-  { id: '7zip.7zip', name: '7-Zip', category: 'Utilitários' }
+  { id: 'ElectronicArts.EADesktop', name: 'EA Desktop', category: 'Jogos' },
+
+  // Utilitários
+  { id: '7zip.7zip', name: '7-Zip', category: 'Utilitários' },
+  { id: 'RARLab.WinRAR', name: 'WinRAR', category: 'Utilitários' },
+  { id: 'Notepad++.Notepad++', name: 'Notepad++', category: 'Utilitários' },
+  { id: 'Rufus.Rufus', name: 'Rufus (criador de pendrive bootável)', category: 'Utilitários' },
+  { id: 'CPUID.CPU-Z', name: 'CPU-Z', category: 'Utilitários' },
+  { id: 'TechPowerUp.GPU-Z', name: 'GPU-Z', category: 'Utilitários' },
+  { id: 'CrystalDewWorld.CrystalDiskInfo', name: 'CrystalDiskInfo', category: 'Utilitários' },
+  { id: 'ShareX.ShareX', name: 'ShareX (captura de tela)', category: 'Utilitários' },
+  { id: 'Bitwarden.Bitwarden', name: 'Bitwarden (gerenciador de senhas)', category: 'Utilitários' },
 ];
 
 /**

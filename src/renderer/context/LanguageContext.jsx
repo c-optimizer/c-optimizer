@@ -4,6 +4,7 @@ const translations = {
   'pt-BR': {
     sidebar: {
       dashboard: 'Painel',
+      presets: 'Presets',
       optimizations: 'Otimizações',
       cleanup: 'Limpeza',
       restore: 'Restauração',
@@ -35,6 +36,9 @@ const translations = {
       searchPlaceholder: 'Buscar otimização...',
       all: 'Todas',
       empty: 'Nenhuma otimização encontrada.'
+    },
+    presets: {
+      subtitle: 'Aplique vários ajustes de uma vez com um clique',
     },
     cleanup: {
       title: 'Limpeza do Sistema',
@@ -83,13 +87,14 @@ const translations = {
       disabled: 'Desativado'
     },
     systemFixer: {
-  title: 'Reparos',
-  subtitle: 'Diagnóstico e correção de arquivos de sistema'
-  }
+      title: 'Reparos',
+      subtitle: 'Diagnóstico e correção de arquivos de sistema'
+    }
   },
   'en-US': {
     sidebar: {
       dashboard: 'Dashboard',
+      presets: 'Presets',
       optimizations: 'Optimizations',
       cleanup: 'Cleanup',
       restore: 'Restore',
@@ -121,6 +126,9 @@ const translations = {
       searchPlaceholder: 'Search optimization...',
       all: 'All',
       empty: 'No optimizations found.'
+    },
+    presets: {
+      subtitle: 'Apply multiple tweaks at once with one click',
     },
     cleanup: {
       title: 'System Cleanup',
@@ -169,13 +177,14 @@ const translations = {
       disabled: 'Disabled'
     },
     systemFixer: {
-  title: 'Repair',
-  subtitle: 'Diagnosis and repair of system files'
-  }
+      title: 'Repair',
+      subtitle: 'Diagnosis and repair of system files'
+    }
   },
   'es-ES': {
     sidebar: {
       dashboard: 'Panel',
+      presets: 'Presets',
       optimizations: 'Optimizaciones',
       cleanup: 'Limpieza',
       restore: 'Restauración',
@@ -207,6 +216,9 @@ const translations = {
       searchPlaceholder: 'Buscar optimización...',
       all: 'Todas',
       empty: 'No se encontraron optimizaciones.'
+    },
+    presets: {
+      subtitle: 'Aplica múltiples ajustes a la vez con un solo clic',
     },
     cleanup: {
       title: 'Limpieza del Sistema',
@@ -255,9 +267,9 @@ const translations = {
       disabled: 'Desactivado'
     },
     systemFixer: {
-  title: 'Reparo',
-  subtitle: 'Diagnóstico y corrección de archivos del sistema'
-},
+      title: 'Reparo',
+      subtitle: 'Diagnóstico y corrección de archivos del sistema'
+    },
   }
 };
 

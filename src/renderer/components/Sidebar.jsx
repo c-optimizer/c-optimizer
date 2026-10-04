@@ -2,23 +2,24 @@ import React from 'react';
 import {
   LayoutDashboard,
   SlidersHorizontal,
+  Zap as ZapTweaks,
   Trash2,
+  Wrench,
   RotateCcw,
   AppWindow,
   Settings,
   KeyRound,
-  Zap
+  Zap,
+  Rocket
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
-import { Wrench } from 'lucide-react'; // adicione ao import existente
-
-
 const navItems = [
   { id: 'dashboard', icon: LayoutDashboard, labelKey: 'sidebar.dashboard' },
+  { id: 'presets', icon: Rocket, labelKey: 'sidebar.presets' },
   { id: 'optimizations', icon: SlidersHorizontal, labelKey: 'sidebar.optimizations' },
   { id: 'cleanup', icon: Trash2, labelKey: 'sidebar.cleanup' },
-  { id: 'system-fixer', icon: Wrench, labelKey: 'sidebar.systemFixer' }, // nova linha
+  { id: 'system-fixer', icon: Wrench, labelKey: 'sidebar.systemFixer' },
   { id: 'restore', icon: RotateCcw, labelKey: 'sidebar.restore' },
   { id: 'apps', icon: AppWindow, labelKey: 'sidebar.apps' },
   { id: 'settings', icon: Settings, labelKey: 'sidebar.settings' },
@@ -60,7 +61,7 @@ function Sidebar({ activeView, onNavigate }) {
       </nav>
 
       <div className="px-5 py-4 border-t border-c-border">
-        <span className="text-[11px] text-slate-500">v1.0.0 &middot; C-Optimizer</span>
+        <span className="text-[11px] text-slate-500">v1.2.0 &middot; C-Optimizer</span>
       </div>
     </aside>
   );

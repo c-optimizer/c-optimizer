@@ -11,9 +11,11 @@ import AppsView from './views/AppsView';
 import SettingsView from './views/SettingsView';
 import AuthView from './views/AuthView';
 import SystemFixerView from './views/SystemFixerView';
+import PresetsView from './views/PresetsView';
 
 const VIEWS = {
   dashboard: { component: DashboardView, titleKey: 'dashboard.title', subtitleKey: 'dashboard.subtitle' },
+  presets: { component: PresetsView, titleKey: 'sidebar.presets', subtitleKey: 'presets.subtitle' },
   optimizations: { component: OptimizationsView, titleKey: 'optimizations.title', subtitleKey: 'optimizations.subtitle' },
   cleanup: { component: CleanupView, titleKey: 'cleanup.title', subtitleKey: 'cleanup.subtitle' },
   restore: { component: RestoreView, titleKey: 'restore.title', subtitleKey: 'restore.subtitle' },

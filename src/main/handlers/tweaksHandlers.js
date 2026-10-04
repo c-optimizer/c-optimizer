@@ -3473,4 +3473,12 @@ $__resultJson = $results | ConvertTo-Json -Compress
   return { success: failed.length === 0, reverted, failed };
 }
 
-module.exports = { registerTweaksHandlers, computeOptimizationScore };
+module.exports = {
+  registerTweaksHandlers,
+  computeOptimizationScore,
+  // Exportados para o módulo de presets reaproveitar o motor de snapshot.
+  applyWithSnapshot,
+  revertWithSnapshot,
+  revertAllTweaks,
+  TWEAKS_CATALOG,
+};

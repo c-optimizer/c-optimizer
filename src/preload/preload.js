@@ -21,6 +21,10 @@ const validInvokeChannels = [
   'tweaks:get-applied-state',
   'tweaks:revert-all',
 
+  // Presets
+  'preset:list',
+  'preset:apply',
+
   // Disco
   'disk:list-volumes',
   'disk:optimize',
@@ -84,7 +88,8 @@ const validOnChannels = [
   'update:available',
   'update:progress',
   'update:downloaded',
-  'system-fixer:progress'
+  'system-fixer:progress',
+  'preset:progress'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

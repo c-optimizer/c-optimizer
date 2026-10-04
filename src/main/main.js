@@ -20,6 +20,7 @@ const { registerChangelogHandlers } = require('./handlers/changelogHandlers');
 const { registerLatencyHandlers } = require('./handlers/latencyHandlers');
 const { registerTimerHandlers } = require('./handlers/timerHandlers');
 const { registerShutdownHandlers } = require('./utils/timerResolution');
+const { registerPresetHandlers } = require('./handlers/presetHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -134,6 +135,7 @@ app.whenReady().then(() => {
   registerTimerHandlers();
   registerShutdownHandlers();
   reconcileStartupOnBoot();
+  registerPresetHandlers();
 
   createWindow();
 
