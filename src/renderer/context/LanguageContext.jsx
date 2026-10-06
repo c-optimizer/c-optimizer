@@ -15,7 +15,8 @@ const translations = {
     },
     header: {
       statusProtected: 'Sistema Otimizado',
-      statusPending: 'Otimização Pendente'
+      statusPending: 'Otimização Pendente',
+      activeTweaks: 'ativos',
     },
     dashboard: {
       title: 'Painel',
@@ -28,7 +29,13 @@ const translations = {
       gpu: 'Placa de Vídeo',
       ram: 'Memória RAM',
       storage: 'Armazenamento',
-      os: 'Sistema Operacional'
+      os: 'Sistema Operacional',
+            applyGamingPreset: 'Aplicar Preset Gaming',
+      applyGamingPresetSub: 'Um clique para latência mínima e prioridade de CPU',
+      presetApplying: 'Aplicando preset...',
+      presetApplied: 'Preset Gaming aplicado! ({applied} ativados, {skipped} já estavam ativos)',
+      presetFailed: 'Falha ao aplicar o preset Gaming.',
+      needsAdmin: 'Alguns tweaks do preset Gaming exigem administrador. Reinicie o C-Optimizer como Administrador para aplicá-los.',
     },
     optimizations: {
       title: 'Otimizações',
@@ -39,6 +46,58 @@ const translations = {
     },
     presets: {
       subtitle: 'Aplique vários ajustes de uma vez com um clique',
+      loading: 'Carregando presets...',
+      hint: 'Presets aplicam vários ajustes de uma vez. Ajustes já ativos são pulados. Você pode reverter qualquer preset individualmente na aba Otimizações.',
+      apply: 'Aplicar Preset',
+      revertAll: 'Reverter Tudo',
+      applying: 'Aplicando...',
+      starting: 'Iniciando...',
+      tweakCount: '{count} otimização(ões) neste preset',
+      stateApplied: 'Ativo',
+      statePartial: 'Parcial',
+      confirmRevert: 'Reverter TODAS as otimizações ativas e restaurar o Windows ao padrão. Continuar?',
+      confirmApply: 'Aplicar o preset "{name}"? Isso ativará {count} otimização(ões).',
+      resultReset: 'Todas as otimizações foram revertidas ({count}).',
+      resultApplied: 'Preset "{name}": {applied} aplicada(s), {skipped} já ativa(s).',
+      resultFailedCount: '{count} ajuste(s) falharam ao aplicar o preset.',
+      resultFailed: 'Falha ao aplicar o preset.',
+      stepApplying: 'Aplicando: {title}',
+      stepApplied: 'Verificado ✓',
+      stepFailed: 'Falhou',
+      stepSkipped: 'Já ativo, pulando...',
+      items: {
+        gaming: {
+          name: 'Modo Gaming',
+          description: 'Aplica todos os ajustes de baixa latência, prioridade de CPU e resposta do mouse para máxima performance em jogos.',
+        },
+        privacy: {
+          name: 'Modo Privacidade',
+          description: 'Bloqueia telemetria, rastreamento, localização e coleta de dados do Windows.',
+        },
+        minimalist: {
+          name: 'Modo Minimalista',
+          description: 'Remove elementos visuais desnecessários, sugestões e serviços de UI, deixando o Windows mais leve.',
+        },
+        network: {
+          name: 'Modo Rede',
+          description: 'Otimiza exclusivamente latência e throughput de rede. Útil para jogos online e streaming.',
+        },
+        reset: {
+          name: 'Reverter Tudo',
+          description: 'Desativa TODAS as otimizações ativas e restaura o Windows ao estado original.',
+        },
+      },
+      gameMode: {
+        title: 'Modo de Jogo Adaptativo',
+        description: 'Detecta automaticamente quando um jogo abre e aplica o preset Gaming. Reverte ao fechar.',
+        monitoring: 'Monitorando',
+        gameActive: 'Jogo Ativo',
+        detectedGame: 'Jogo detectado',
+        enable: 'Ativar',
+        disable: 'Desativar',
+        waiting: 'Aguarde...',
+        needsAdmin: 'Reinicie o C-Optimizer como Administrador para usar o Modo de Jogo.',
+      },
     },
     cleanup: {
       title: 'Limpeza do Sistema',
@@ -105,7 +164,8 @@ const translations = {
     },
     header: {
       statusProtected: 'System Optimized',
-      statusPending: 'Optimization Pending'
+      statusPending: 'Optimization Pending',
+      activeTweaks: 'active',
     },
     dashboard: {
       title: 'Dashboard',
@@ -118,7 +178,13 @@ const translations = {
       gpu: 'Graphics Card',
       ram: 'RAM Memory',
       storage: 'Storage',
-      os: 'Operating System'
+      os: 'Operating System',
+            applyGamingPreset: 'Apply Gaming Preset',
+      applyGamingPresetSub: 'One click for minimum latency and CPU priority',
+      presetApplying: 'Applying preset...',
+      presetApplied: 'Gaming preset applied! ({applied} enabled, {skipped} already active)',
+      presetFailed: 'Failed to apply the Gaming preset.',
+      needsAdmin: 'Some Gaming preset tweaks require administrator. Restart C-Optimizer as Administrator to apply them.',
     },
     optimizations: {
       title: 'Optimizations',
@@ -129,6 +195,58 @@ const translations = {
     },
     presets: {
       subtitle: 'Apply multiple tweaks at once with one click',
+      loading: 'Loading presets...',
+      hint: 'Presets apply multiple tweaks at once. Already active tweaks are skipped. You can revert any preset individually in the Optimizations tab.',
+      apply: 'Apply Preset',
+      revertAll: 'Revert All',
+      applying: 'Applying...',
+      starting: 'Starting...',
+      tweakCount: '{count} tweak(s) in this preset',
+      stateApplied: 'Active',
+      statePartial: 'Partial',
+      confirmRevert: 'Revert ALL active optimizations and restore Windows to default. Continue?',
+      confirmApply: 'Apply preset "{name}"? This will enable {count} tweak(s).',
+      resultReset: 'All optimizations were reverted ({count}).',
+      resultApplied: 'Preset "{name}": {applied} applied, {skipped} already active.',
+      resultFailedCount: '{count} tweak(s) failed to apply in the preset.',
+      resultFailed: 'Failed to apply the preset.',
+      stepApplying: 'Applying: {title}',
+      stepApplied: 'Verified ✓',
+      stepFailed: 'Failed',
+      stepSkipped: 'Already active, skipping...',
+      items: {
+        gaming: {
+          name: 'Gaming Mode',
+          description: 'Applies all low-latency, CPU priority and mouse responsiveness tweaks for maximum gaming performance.',
+        },
+        privacy: {
+          name: 'Privacy Mode',
+          description: 'Blocks telemetry, tracking, location and data collection from Windows.',
+        },
+        minimalist: {
+          name: 'Minimalist Mode',
+          description: 'Removes unnecessary visual elements, suggestions and UI services, making Windows lighter.',
+        },
+        network: {
+          name: 'Network Mode',
+          description: 'Optimizes exclusively network latency and throughput. Useful for online gaming and streaming.',
+        },
+        reset: {
+          name: 'Revert All',
+          description: 'Disables ALL active optimizations and restores Windows to its original state.',
+        },
+      },
+      gameMode: {
+        title: 'Adaptive Game Mode',
+        description: 'Automatically detects when a game launches and applies the Gaming preset. Reverts on close.',
+        monitoring: 'Monitoring',
+        gameActive: 'Game Active',
+        detectedGame: 'Detected game',
+        enable: 'Enable',
+        disable: 'Disable',
+        waiting: 'Please wait...',
+        needsAdmin: 'Restart C-Optimizer as Administrator to use Game Mode.',
+      },
     },
     cleanup: {
       title: 'System Cleanup',
@@ -195,7 +313,8 @@ const translations = {
     },
     header: {
       statusProtected: 'Sistema Optimizado',
-      statusPending: 'Optimización Pendiente'
+      statusPending: 'Optimización Pendiente',
+      activeTweaks: 'activos',
     },
     dashboard: {
       title: 'Panel',
@@ -208,7 +327,13 @@ const translations = {
       gpu: 'Tarjeta Gráfica',
       ram: 'Memoria RAM',
       storage: 'Almacenamiento',
-      os: 'Sistema Operativo'
+      os: 'Sistema Operativo',
+            applyGamingPreset: 'Aplicar Preset Gaming',
+      applyGamingPresetSub: 'Un clic para latencia mínima y prioridad de CPU',
+      presetApplying: 'Aplicando preset...',
+      presetApplied: '¡Preset Gaming aplicado! ({applied} activados, {skipped} ya activos)',
+      presetFailed: 'Error al aplicar el preset Gaming.',
+      needsAdmin: 'Algunos ajustes del preset Gaming requieren administrador. Reinicia C-Optimizer como Administrador para aplicarlos.',
     },
     optimizations: {
       title: 'Optimizaciones',
@@ -219,6 +344,58 @@ const translations = {
     },
     presets: {
       subtitle: 'Aplica múltiples ajustes a la vez con un solo clic',
+      loading: 'Cargando presets...',
+      hint: 'Los presets aplican múltiples ajustes a la vez. Los ya activos se omiten. Puedes revertir cualquier preset individualmente en la pestaña Optimizaciones.',
+      apply: 'Aplicar Preset',
+      revertAll: 'Revertir Todo',
+      applying: 'Aplicando...',
+      starting: 'Iniciando...',
+      tweakCount: '{count} ajuste(s) en este preset',
+      stateApplied: 'Activo',
+      statePartial: 'Parcial',
+      confirmRevert: '¿Revertir TODAS las optimizaciones activas y restaurar Windows al estado predeterminado?',
+      confirmApply: '¿Aplicar el preset "{name}"? Esto activará {count} ajuste(s).',
+      resultReset: 'Todas las optimizaciones fueron revertidas ({count}).',
+      resultApplied: 'Preset "{name}": {applied} aplicado(s), {skipped} ya activo(s).',
+      resultFailedCount: '{count} ajuste(s) no pudieron aplicarse en el preset.',
+      resultFailed: 'Error al aplicar el preset.',
+      stepApplying: 'Aplicando: {title}',
+      stepApplied: 'Verificado ✓',
+      stepFailed: 'Falló',
+      stepSkipped: 'Ya activo, omitiendo...',
+      items: {
+        gaming: {
+          name: 'Modo Gaming',
+          description: 'Aplica todos los ajustes de baja latencia, prioridad de CPU y respuesta del ratón para máximo rendimiento en juegos.',
+        },
+        privacy: {
+          name: 'Modo Privacidad',
+          description: 'Bloquea telemetría, rastreo, ubicación y recolección de datos de Windows.',
+        },
+        minimalist: {
+          name: 'Modo Minimalista',
+          description: 'Elimina elementos visuales innecesarios, sugerencias y servicios de UI, haciendo Windows más ligero.',
+        },
+        network: {
+          name: 'Modo Red',
+          description: 'Optimiza exclusivamente latencia y rendimiento de red. Útil para juegos en línea y streaming.',
+        },
+        reset: {
+          name: 'Revertir Todo',
+          description: 'Desactiva TODAS las optimizaciones activas y restaura Windows a su estado original.',
+        },
+      },
+      gameMode: {
+        title: 'Modo de Juego Adaptativo',
+        description: 'Detecta automáticamente cuando un juego se abre y aplica el preset Gaming. Revierte al cerrar.',
+        monitoring: 'Monitoreando',
+        gameActive: 'Juego Activo',
+        detectedGame: 'Juego detectado',
+        enable: 'Activar',
+        disable: 'Desactivar',
+        waiting: 'Espera...',
+        needsAdmin: 'Reinicia C-Optimizer como Administrador para usar el Modo de Juego.',
+      },
     },
     cleanup: {
       title: 'Limpieza del Sistema',

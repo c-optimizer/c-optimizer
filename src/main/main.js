@@ -21,6 +21,7 @@ const { registerLatencyHandlers } = require('./handlers/latencyHandlers');
 const { registerTimerHandlers } = require('./handlers/timerHandlers');
 const { registerShutdownHandlers } = require('./utils/timerResolution');
 const { registerPresetHandlers } = require('./handlers/presetHandlers');
+const { registerGameModeHandlers, reconcileOnBoot: reconcileGameModeOnBoot } = require('./handlers/gameModeHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -135,7 +136,9 @@ app.whenReady().then(() => {
   registerTimerHandlers();
   registerShutdownHandlers();
   reconcileStartupOnBoot();
+  reconcileGameModeOnBoot();
   registerPresetHandlers();
+  registerGameModeHandlers();
 
   createWindow();
 

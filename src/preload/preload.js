@@ -25,6 +25,11 @@ const validInvokeChannels = [
   'preset:list',
   'preset:apply',
 
+  // Game Mode
+  'game-mode:get-status',
+  'game-mode:enable',
+  'game-mode:disable',
+
   // Disco
   'disk:list-volumes',
   'disk:optimize',
@@ -89,7 +94,9 @@ const validOnChannels = [
   'update:progress',
   'update:downloaded',
   'system-fixer:progress',
-  'preset:progress'
+  'preset:progress',
+  'game-mode:state',
+
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {

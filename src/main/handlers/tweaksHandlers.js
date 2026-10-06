@@ -187,7 +187,12 @@ try {
     $noDelay = if ($null -ne $item -and $item.PSObject.Properties.Name -contains "TCPNoDelay") { $item.TCPNoDelay } else { $null }
     $list += [PSCustomObject]@{ Guid = $guid; TcpAckFrequency = $ackFreq; TCPNoDelay = $noDelay }
   }
-  [PSCustomObject]@{ success = $true; exists = ($list.Count -gt 0); value = $list } | ConvertTo-Json -Compress -Depth 6
+  $allApplied = $true
+  if ($list.Count -eq 0) { $allApplied = $false }
+  foreach ($entry in $list) {
+    if ($entry.TcpAckFrequency -ne 1 -or $entry.TCPNoDelay -ne 1) { $allApplied = $false }
+  }
+  [PSCustomObject]@{ success = $true; exists = $allApplied; value = $list } | ConvertTo-Json -Compress -Depth 6
 } catch {
   [PSCustomObject]@{ success = $false; exists = $false; value = $null; error = $_.Exception.Message } | ConvertTo-Json -Compress
 }
@@ -659,26 +664,35 @@ try {
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 try {
-  # GUID público padrão do "Ultimate Performance" da Microsoft.
   $ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+  $highPerfGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 
-  # Verifica se já existe uma cópia duplicada do Ultimate Performance
-  # (evita duplicar o esquema a cada apply repetido).
-  $existingSchemes = powercfg /list
-  $alreadyDuplicated = $existingSchemes | Select-String -Pattern $ultimateGuid -Quiet
+  $schemeList = (powercfg /list) -join "\`n"
+  $newGuid = $null
 
-  if (-not $alreadyDuplicated) {
-    $dupOutput = powercfg /duplicatescheme $ultimateGuid
-    if ($dupOutput -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
-      $newGuid = $matches[1]
-    } else {
-      throw "Não foi possível duplicar o esquema Ultimate Performance."
-    }
-  } else {
+  # 1) Ultimate Performance já está duplicado (ou nativo nesta edição)?
+  if ($schemeList -match $ultimateGuid) {
     $newGuid = $ultimateGuid
+  } else {
+    # 2) Tenta duplicar. Em Windows Home (ou builds sem o esquema),
+    #    o comando retorna erro — capturamos sem abortar.
+    $dupOutput = (powercfg /duplicatescheme $ultimateGuid 2>&1) -join "\`n"
+    $match = [regex]::Match($dupOutput, '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})')
+    if ($match.Success -and $dupOutput -notmatch 'não existe|does not exist') {
+      $newGuid = $match.Groups[1].Value
+    }
   }
 
-  powercfg /setactive $newGuid
+  # 3) Fallback: High Performance nativo (presente em TODAS as edições).
+  if (-not $newGuid -and $schemeList -match $highPerfGuid) {
+    $newGuid = $highPerfGuid
+  }
+
+  if (-not $newGuid) {
+    throw "Nenhum plano de alta performance disponível neste Windows."
+  }
+
+  powercfg /setactive $newGuid | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "powercfg /setactive retornou código $LASTEXITCODE" }
 } catch {
   Write-Error $_.Exception.Message
@@ -3102,6 +3116,148 @@ try {
     },
     commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
+  {
+    id: 'hide-widgets-win11',
+    category: 'Performance',
+    title: 'Ocultar Widgets da Barra de Tarefas',
+    description: 'Remove o botão de Widgets (previsão do tempo, notícias, esportes) da barra de tarefas do Windows 11.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    minWindowsBuild: 22000,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "TaskbarDa"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "TaskbarDa" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "TaskbarDa" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.TaskbarDa } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "TaskbarDa"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop | Out-Null
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
+  {
+    id: 'hide-chat-win11',
+    category: 'Performance',
+    title: 'Ocultar Chat/Teams da Barra de Tarefas',
+    description: 'Remove o botão de Chat (Microsoft Teams) da barra de tarefas do Windows 11.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    minWindowsBuild: 22000,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "TaskbarMn"
+try {
+  if (-not (Test-Path -LiteralPath $path)) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress; exit 0 }
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.$name } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+New-ItemProperty -LiteralPath $path -Name "TaskbarMn" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+try {
+  $item = Get-ItemProperty -LiteralPath $path -Name "TaskbarMn" -ErrorAction Stop
+  [PSCustomObject]@{ success=$true; exists=$true; value=$item.TaskbarMn } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success=$true; exists=$false; value=$null } | ConvertTo-Json -Compress
+}
+      `,
+      expected: { exists: true, value: 0 }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
+$name = "TaskbarMn"
+if ($snapshotExists -eq $true) {
+  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop | Out-Null
+} else {
+  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+}
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 800
+Start-Process explorer.exe
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
 
 ];
 
@@ -3335,10 +3491,30 @@ function registerTweaksHandlers() {
     if (tweak.engine === 'snapshot' && os.platform() === 'win32') {
       return applyWithSnapshot(tweak);
     }
-    // ... resto igual ...
+
+    // Caminho legado — tweaks que usam commands.win/commands.linux.
+    const commandSet = os.platform() === 'win32' ? tweak.commands.win : tweak.commands.linux;
+    if (!commandSet) {
+      return { success: false, error: 'Ajuste indisponível para este sistema operacional.' };
+    }
+
+    try {
+      await runCommandSmart(commandSet.apply, tweak.requiresAdmin, 15000);
+      setTweakState(tweakId, true);
+      return { success: true, tweakId, enabled: true };
+    } catch (error) {
+      log.error(`[tweaks:apply] "${tweakId}":`, error.message);
+      const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
+      return {
+        success: false, tweakId,
+        error: userCancelled
+          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+          : 'Falha ao aplicar este ajuste.'
+      };
+    }
   }));
 
-  ipcMain.handle('tweaks:revert', withLicense(async (_event, tweakId) => {
+   ipcMain.handle('tweaks:revert', withLicense(async (_event, tweakId) => {
     const tweak = TWEAKS_CATALOG.find((t) => t.id === tweakId);
     if (!tweak) return { success: false, error: `Tweak "${tweakId}" não encontrado.` };
 
@@ -3356,7 +3532,9 @@ function registerTweaksHandlers() {
       const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
       return {
         success: false, tweakId,
-        error: userCancelled ? 'Você cancelou a permissão de administrador solicitada pelo Windows.' : 'Falha ao reverter este ajuste.'
+        error: userCancelled
+          ? 'Você cancelou a permissão de administrador solicitada pelo Windows.'
+          : 'Falha ao reverter este ajuste.'
       };
     }
   }));

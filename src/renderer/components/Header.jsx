@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Globe, ChevronDown, ShieldCheck, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, ChevronDown, ShieldCheck, AlertTriangle, Zap } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
 const languageOptions = [
@@ -8,12 +8,13 @@ const languageOptions = [
   { code: 'es-ES', label: 'ES-ES' }
 ];
 
+const POLL_INTERVAL_MS = 5000;
+
 function Header({ title, subtitle, statusOk = true }) {
   const { language, setLanguage, t } = useLanguage();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [activeCount, setActiveCount] = useState(null);
 
-  // Agora persiste no electron-store, igual à SettingsView — evita o
-  // bug de o idioma "voltar" ao reabrir o app quando trocado por aqui.
   const handleLanguageSelect = async (code) => {
     setLanguage(code);
     setDropdownOpen(false);
@@ -24,6 +25,26 @@ function Header({ title, subtitle, statusOk = true }) {
     }
   };
 
+  // Polling do número de tweaks ativos. Roda no Header (que sempre está
+  // montado quando o usuário está logado), então o contador acompanha
+  // qualquer mudança feita em outras telas (Presets, Otimizações).
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchCount() {
+      try {
+        const r = await window.electronAPI.invoke('system:get-optimization-status');
+        if (isMounted && r && typeof r.activeCount === 'number') {
+          setActiveCount(r.activeCount);
+        }
+      } catch { /* silencioso */ }
+    }
+
+    fetchCount();
+    const id = setInterval(fetchCount, POLL_INTERVAL_MS);
+    return () => { isMounted = false; clearInterval(id); };
+  }, []);
+
   return (
     <header className="flex items-center justify-between px-8 py-5 border-b border-c-border bg-c-bg sticky top-0 z-10">
       <div>
@@ -31,7 +52,15 @@ function Header({ title, subtitle, statusOk = true }) {
         {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Contador de tweaks ativos */}
+        {activeCount !== null && activeCount > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-c-border bg-c-surface text-xs font-medium text-slate-300">
+            <Zap size={12} className="text-c-secondary" />
+            <span>{activeCount} {t('header.activeTweaks')}</span>
+          </div>
+        )}
+
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium
             ${statusOk

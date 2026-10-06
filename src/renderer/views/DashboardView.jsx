@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cpu, CircuitBoard, MemoryStick, HardDrive, Monitor, Zap, Loader2 } from 'lucide-react';
+import { Cpu, CircuitBoard, MemoryStick, HardDrive, Monitor, Zap, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -17,21 +17,28 @@ function DashboardView() {
   const [optimization, setOptimization] = useState({ score: 0, activeCount: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
+  // Estado do botão "Aplicar Preset Gaming"
+  const [applyingPreset, setApplyingPreset] = useState(false);
+  const [presetResult, setPresetResult] = useState(null);   // { type: 'ok'|'err', text }
+  const [isAdmin, setIsAdmin] = useState(true);
+
   useEffect(() => {
     let isMounted = true;
 
     async function loadInitialData() {
       try {
-        const [initialStats, info, optStatus] = await Promise.all([
+        const [initialStats, info, optStatus, adminStatus] = await Promise.all([
           window.electronAPI.invoke('system:get-stats'),
           window.electronAPI.invoke('system:get-info'),
-          window.electronAPI.invoke('system:get-optimization-status')
+          window.electronAPI.invoke('system:get-optimization-status'),
+          window.electronAPI.invoke('system:is-admin')
         ]);
 
         if (isMounted) {
           if (!initialStats.error) setStats(initialStats);
           if (!info.error) setStaticInfo(info);
           setOptimization(optStatus);
+          setIsAdmin(!!adminStatus);
           setLoading(false);
         }
       } catch (error) {
@@ -51,6 +58,34 @@ function DashboardView() {
       unsubscribe();
     };
   }, []);
+
+  const handleApplyGamingPreset = async () => {
+    setApplyingPreset(true);
+    setPresetResult(null);
+    try {
+      const result = await window.electronAPI.invoke('preset:apply', 'gaming');
+      if (result.success) {
+        const applied = result.applied?.length || 0;
+        const skipped = result.skipped?.length || 0;
+        setPresetResult({
+          type: 'ok',
+          text: t('dashboard.presetApplied')
+            .replace('{applied}', applied)
+            .replace('{skipped}', skipped)
+        });
+        // Atualiza a barra de otimização no card ao lado.
+        const refreshed = await window.electronAPI.invoke('system:get-optimization-status');
+        if (refreshed) setOptimization(refreshed);
+      } else {
+        setPresetResult({ type: 'err', text: result.error || t('dashboard.presetFailed') });
+      }
+    } catch (err) {
+      setPresetResult({ type: 'err', text: err.message });
+    } finally {
+      setApplyingPreset(false);
+      setTimeout(() => setPresetResult(null), 8000);
+    }
+  };
 
   const osLabel = staticInfo
     ? `${staticInfo.os.distro} ${staticInfo.os.release} · ${staticInfo.os.arch}`
@@ -108,12 +143,42 @@ function DashboardView() {
           </div>
         </div>
 
-        <button className="bg-c-primary/10 border border-c-primary rounded-xl p-6 flex flex-col items-center justify-center gap-2 shadow-glow-primary hover:bg-c-primary/20 transition-colors">
-          <Zap size={28} className="text-c-primary" />
-          <span className="text-c-primary font-bold">{t('dashboard.optimizeCta')}</span>
-          <span className="text-xs text-slate-400 text-center">{t('dashboard.optimizeCtaSub')}</span>
+        <button
+          onClick={handleApplyGamingPreset}
+          disabled={applyingPreset}
+          className="bg-c-primary/10 border border-c-primary rounded-xl p-6 flex flex-col items-center justify-center gap-2 shadow-glow-primary hover:bg-c-primary/20 transition-colors disabled:opacity-60 disabled:cursor-wait"
+        >
+          {applyingPreset
+            ? <Loader2 size={28} className="text-c-primary animate-spin" />
+            : <Zap size={28} className="text-c-primary" />}
+          <span className="text-c-primary font-bold">
+            {applyingPreset ? t('dashboard.presetApplying') : t('dashboard.applyGamingPreset')}
+          </span>
+          <span className="text-xs text-slate-400 text-center">
+            {t('dashboard.applyGamingPresetSub')}
+          </span>
         </button>
       </div>
+
+      {presetResult && (
+        <div
+          className={`flex items-center gap-2 text-sm rounded-lg px-4 py-3 border ${
+            presetResult.type === 'ok'
+              ? 'text-c-primary bg-c-primary/10 border-c-primary/30'
+              : 'text-c-danger bg-c-danger/10 border-c-danger/30'
+          }`}
+        >
+          {presetResult.type === 'ok' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+          {presetResult.text}
+        </div>
+      )}
+
+      {!isAdmin && (
+        <div className="flex items-start gap-2 text-yellow-400 text-xs bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          {t('dashboard.needsAdmin')}
+        </div>
+      )}
     </div>
   );
 }

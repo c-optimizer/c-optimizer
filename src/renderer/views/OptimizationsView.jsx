@@ -4,7 +4,7 @@ import {
   ShieldAlert, Sparkles, Timer, MousePointer2, Maximize, HardDrive, MemoryStick, RotateCw,
   Keyboard, Bell, Users, Link2, Eye, LayoutGrid, Radio, ShieldX, Chrome, Globe, Flame,
   ShieldHalf, AppWindow, ListChecks, XSquare, Moon, Sparkle, PowerOff, MapPinOff,
-  Trash2, RefreshCw, Sun, Activity, Zap, CheckCircle2, Wifi, Lock, Settings2
+  Trash2, RefreshCw, Sun, Activity, Zap, CheckCircle2, Wifi, Lock, Settings2, MessageSquare
 } from 'lucide-react';
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
@@ -43,7 +43,9 @@ const ICON_MAP = {
   'restore-classic-context-menu': MousePointer2,
   'disable-wifi-sense': Wifi,
   'disable-lock-screen-tips': Lock,
-  'services-manual-profile': Settings2
+  'services-manual-profile': Settings2,
+  'hide-widgets-win11': LayoutGrid,
+  'hide-chat-win11': MessageSquare,
 };
 
 const CATEGORIES = ['Todas', 'Gaming', 'GPU', 'Rede', 'Privacidade', 'Performance'];
