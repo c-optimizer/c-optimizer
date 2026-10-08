@@ -186,13 +186,13 @@ function InstallTab() {
       )}
 
       {logs.length > 0 && (
-        <div className="bg-c-bg border border-c-border rounded-lg p-3 max-h-40 overflow-y-auto flex flex-col gap-1">
+                <div className="bg-c-bg border border-c-border rounded-lg p-3 max-h-60 overflow-y-auto flex flex-col gap-1">
           <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
             <Terminal size={12} />
             Log de instalação
           </div>
-          {logs.map((line, idx) => (
-            <p key={idx} className="text-[11px] text-slate-500 font-mono truncate">{line}</p>
+                    {logs.map((line, idx) => (
+            <p key={idx} className="text-[11px] text-slate-500 font-mono whitespace-pre-wrap break-all">{line}</p>
           ))}
         </div>
       )}

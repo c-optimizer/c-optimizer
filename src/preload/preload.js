@@ -45,6 +45,7 @@ const validInvokeChannels = [
   'restore:list-points-elevated',
   'restore:create-point',
   'restore:enable-protection',
+  'restore:apply-point',
 
   // Apps / Bloatware
   'apps:list-installed',

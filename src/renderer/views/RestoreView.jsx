@@ -1,17 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Shield,
-  ShieldCheck,
-  PlusCircle,
-  Loader2,
-  AlertCircle,
-  History,
-  Clock,
-  PackageCheck,
-  RefreshCw,
-  Wrench,
-  Sparkles,
-  Power
+  Shield, ShieldCheck, PlusCircle, Loader2, AlertCircle, History, Clock,
+  PackageCheck, RefreshCw, Wrench, Sparkles, Power, Play, X, AlertTriangle
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -65,6 +55,9 @@ function RestoreView() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [protectionAvailable, setProtectionAvailable] = useState(true);
+  const [applyingPoint, setApplyingPoint] = useState(null);
+  const [isApplying, setIsApplying] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const loadPoints = async () => {
     setLoading(true);
@@ -109,39 +102,30 @@ function RestoreView() {
   };
 
   const handleCreate = async () => {
-  setCreating(true);
-  setErrorMsg(null);
-  setSuccessMsg(null);
-  try {
-    const result = await window.electronAPI.invoke('restore:create-point', 'Backup de Seguranca - C-Optimizer');
-    if (result.success) {
-      setSuccessMsg('Ponto de restauração criado com sucesso!');
-
-      // Usa a listagem elevada diretamente após criar: a consulta normal
-      // pode não refletir o ponto recém-criado em algumas configurações
-      // do Windows (mesma limitação do botão "Verificar com permissão
-      // de administrador"). Como a criação já passou por elevação, isso
-      // normalmente não gera um novo prompt perceptível de UAC.
-      const listResult = await window.electronAPI.invoke('restore:list-points-elevated');
-      if (listResult.success) {
-        setPoints(listResult.points);
-        setProtectionAvailable(true);
+    setCreating(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const result = await window.electronAPI.invoke('restore:create-point', 'Backup de Seguranca - C-Optimizer');
+      if (result.success) {
+        setSuccessMsg('Ponto de restauração criado com sucesso!');
+        const listResult = await window.electronAPI.invoke('restore:list-points-elevated');
+        if (listResult.success) {
+          setPoints(listResult.points);
+          setProtectionAvailable(true);
+        } else {
+          await loadPoints();
+        }
       } else {
-        await loadPoints();
+        setErrorMsg(result.error);
       }
-    } else {
-      setErrorMsg(result.error);
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setCreating(false);
     }
-  } catch (error) {
-    setErrorMsg(error.message);
-  } finally {
-    setCreating(false);
-  }
   };
 
-  // Fallback: em alguns ambientes Windows, a consulta de pontos de restauração
-  // só retorna resultados com token elevado, mesmo sem lançar erro (vem vazia).
-  // Este botão pede UAC uma única vez para tentar de novo com privilégio.
   const handleRetryElevated = async () => {
     setRetryingElevated(true);
     setErrorMsg(null);
@@ -160,6 +144,26 @@ function RestoreView() {
       setErrorMsg(error.message);
     } finally {
       setRetryingElevated(false);
+    }
+  };
+
+  const handleApplyPoint = async () => {
+    if (!applyingPoint || !acknowledged) return;
+    setIsApplying(true);
+    setErrorMsg(null);
+    try {
+      const result = await window.electronAPI.invoke('restore:apply-point');
+      if (result.success) {
+        setSuccessMsg('Wizard de restauração aberto. Siga as instruções na tela.');
+        setApplyingPoint(null);
+        setAcknowledged(false);
+      } else {
+        setErrorMsg(result.error || 'Não foi possível abrir o wizard de restauração.');
+      }
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -320,12 +324,85 @@ function RestoreView() {
                   <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full ${style.bg} ${style.color} font-medium shrink-0`}>
                     {point.type}
                   </span>
+
+                  <button
+                    onClick={() => { setApplyingPoint(point); setAcknowledged(false); }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-c-primary/40 text-c-primary text-xs font-medium hover:bg-c-primary/10 transition-colors shrink-0"
+                  >
+                    <Play size={12} />
+                    Aplicar
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Modal de confirmação para aplicar ponto de restauração */}
+      {applyingPoint && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-c-surface border border-c-border rounded-xl max-w-lg w-full p-6 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 shrink-0">
+                <AlertTriangle size={20} className="text-yellow-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-slate-100 font-semibold text-base">Restaurar o sistema para este ponto?</h3>
+                <p className="text-slate-400 text-xs mt-1">
+                  Ponto: <span className="text-slate-200">{applyingPoint.description}</span>
+                  <br />
+                  Criado em: {formatDate(applyingPoint.date)}
+                </p>
+              </div>
+              <button
+                onClick={() => { setApplyingPoint(null); setAcknowledged(false); }}
+                className="text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-c-danger/5 border border-c-danger/30 rounded-lg p-4 flex flex-col gap-2 text-xs text-slate-300">
+              <p className="font-semibold text-c-danger">O que vai acontecer:</p>
+              <ul className="flex flex-col gap-1 pl-4 list-disc text-slate-400">
+                <li>O Windows vai reiniciar em aproximadamente 30 segundos.</li>
+                <li>Programas instalados depois desta data serão desinstalados.</li>
+                <li>Arquivos pessoais criados depois desta data podem ser removidos.</li>
+                <li>Você poderá escolher manter os arquivos pessoais no diálogo do Windows.</li>
+                <li>O processo pode levar de 10 a 30 minutos. Não desligue o computador.</li>
+              </ul>
+            </div>
+
+            <label className="flex items-start gap-2 text-sm text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 accent-c-secondary"
+              />
+              Entendi os riscos e quero continuar
+            </label>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => { setApplyingPoint(null); setAcknowledged(false); }}
+                className="px-4 py-2 rounded-lg border border-c-border text-slate-400 text-sm font-medium hover:text-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleApplyPoint}
+                disabled={!acknowledged || isApplying}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-c-primary/10 border border-c-primary text-c-primary text-sm font-semibold hover:bg-c-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isApplying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                {isApplying ? 'Abrindo...' : 'Abrir Wizard do Windows'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

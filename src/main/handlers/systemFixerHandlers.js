@@ -1,6 +1,6 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const os = require('os');
-const { isRunningAsAdmin } = require('../utils/shell');
+const { runShellCommand, isRunningAsAdmin } = require('../utils/shell');
 const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
 
@@ -23,10 +23,7 @@ function stripAnsi(str) {
 /**
  * Roda o executável DIRETAMENTE como processo do PTY (não via shell
  * persistente + marcador de texto). onExit do próprio node-pty já nos dá
- * o exitCode real, sem precisar "adivinhar" o fim pela saída de texto —
- * essa era a causa do bug anterior: o marcador de texto podia ser
- * confundido/detectado cedo demais, resolvendo a Promise enquanto o
- * DISM/SFC real continuava rodando em segundo plano como processo órfão.
+ * o exitCode real, sem precisar "adivinhar" o fim pela saída de texto.
  */
 function runSystemCommand(command, args, stepId, window) {
   return new Promise((resolve) => {
@@ -101,11 +98,21 @@ async function runFullRepair(window) {
 }
 
 /**
- * CHKDSK como processo direto do PTY. Prompts de confirmação (S/N, Y/N)
- * são detectados na saída e respondidos automaticamente via ptyProcess.write.
+ * CHKDSK como processo direto do PTY.
+ *
+ * Para a unidade do sistema:
+ *   1. Limpa qualquer dirty bit residual de tentativas anteriores do fsutil
+ *      (que travava o volume permanentemente "sujo" e causava loop de
+ *      verificações a cada boot).
+ *   2. Consulta se já está agendado — se sim, retorna sucesso sem re-agendar.
+ *   3. Usa `chkntfs /c` (agenda UMA VEZ) em vez de `fsutil dirty set`
+ *      (que marcava permanentemente).
+ *
+ * Para unidades não-sistema: chkdsk roda em tempo real, com auto-resposta
+ * de prompts (S/N, Y/N).
  */
 function runDriveCheck(driveLetter, window) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (!pty) {
       const msg = 'Módulo de terminal (node-pty) não disponível nesta instalação.';
       log.error(`[system-fixer] ${msg}`);
@@ -117,22 +124,48 @@ function runDriveCheck(driveLetter, window) {
     const isSystemDrive = systemDrive === targetDrive;
 
     // ------ CASO 1: unidade do sistema ------
-    // CHKDSK com /f /r NUNCA roda na unidade do sistema em tempo real — o
-    // Windows precisa travar o volume, e não pode travar o disco em que ele
-    // próprio está rodando. A solução oficial é `fsutil dirty set`: marca o
-    // volume como "sujo", e o autochk roda automaticamente no próximo boot
-    // antes de qualquer outro processo abrir o volume.
     if (isSystemDrive) {
       if (window && !window.isDestroyed()) {
         window.webContents.send('system-fixer:progress', {
           stepId: 'chkdsk',
-          line: 'Unidade do sistema detectada — agendando verificação para o próximo reinício via fsutil...'
+          line: 'Unidade do sistema detectada — verificando estado atual...'
         });
       }
 
+      // Passo 1: limpa qualquer dirty bit residual de tentativas anteriores.
+      try {
+        await new Promise((resolve) => {
+          const cleanup = pty.spawn('cmd.exe', ['/c', `fsutil dirty clear ${driveLetter}:`], {
+            name: 'xterm', cols: 80, rows: 24, env: process.env
+          });
+          cleanup.onExit(() => resolve());
+        });
+      } catch { /* ignora falha na limpeza */ }
+
+      // Passo 2: consulta se a unidade já está agendada para verificação.
+      let alreadyScheduled = false;
+      try {
+        const { stdout } = await runShellCommand(`fsutil dirty query ${driveLetter}:`, 8000);
+        if (/sujo|dirty/i.test(stdout || '')) {
+          alreadyScheduled = true;
+        }
+      } catch { /* assume não agendado */ }
+
+      // Se já estava agendada, não precisa re-agendar.
+      if (alreadyScheduled) {
+        if (window && !window.isDestroyed()) {
+          window.webContents.send('system-fixer:progress', {
+            stepId: 'chkdsk',
+            line: 'A unidade já estava agendada para verificação no próximo reinício.'
+          });
+        }
+        return resolve({ success: true, exitCode: 0, scheduled: true });
+      }
+
+      // Passo 3: agenda com chkntfs /c (uma única vez).
       let ptyProcess;
       try {
-        ptyProcess = pty.spawn('cmd.exe', ['/c', `fsutil dirty set ${driveLetter}:`], {
+        ptyProcess = pty.spawn('cmd.exe', ['/c', `chkntfs /c ${driveLetter}:`], {
           name: 'xterm',
           cols: 120,
           rows: 30,
@@ -140,7 +173,7 @@ function runDriveCheck(driveLetter, window) {
           env: process.env
         });
       } catch (err) {
-        log.error('[system-fixer] Falha ao iniciar fsutil:', err.message);
+        log.error('[system-fixer] Falha ao iniciar chkntfs:', err.message);
         return resolve({ success: false, error: err.message });
       }
 
@@ -166,7 +199,7 @@ function runDriveCheck(driveLetter, window) {
           if (window && !window.isDestroyed()) {
             window.webContents.send('system-fixer:progress', {
               stepId: 'chkdsk',
-              line: 'Verificação agendada com sucesso. Será executada automaticamente no próximo reinício do Windows.'
+              line: 'Verificação agendada com sucesso. O CHKDSK será executado UMA VEZ no próximo reinício do Windows.'
             });
           }
           return resolve({ success: true, exitCode: 0, scheduled: true });
@@ -174,7 +207,7 @@ function runDriveCheck(driveLetter, window) {
         return resolve({
           success: false,
           exitCode,
-          error: `Falha ao agendar verificação (fsutil retornou ${exitCode}).`
+          error: `Falha ao agendar verificação (chkntfs retornou ${exitCode}).`
         });
       });
 
@@ -191,9 +224,6 @@ function runDriveCheck(driveLetter, window) {
 
     let ptyProcess;
     try {
-      // Para unidades não-sistema, chkdsk pode travar o volume e rodar
-      // em tempo real. `cmd.exe /c` porque chkdsk.exe é ferramenta legada
-      // e exige um console real para inicializar.
       ptyProcess = pty.spawn('cmd.exe', ['/c', `chkdsk ${driveLetter}: /f /r`], {
         name: 'xterm',
         cols: 120,

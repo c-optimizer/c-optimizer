@@ -77,10 +77,55 @@ async function createRestorePoint(description = 'Backup de Seguranca - C-Optimiz
   }
 
   const safeDescription = toAsciiSafe(description).replace(/'/g, "''");
-  const script = `Checkpoint-Computer -Description '${safeDescription}' -RestorePointType 'MODIFY_SETTINGS'`;
+
+  // O Windows impõe um intervalo mínimo de 24h entre pontos de restauração
+  // (SystemRestorePointCreationFrequency = 1440 minutos). Se já houve um
+  // ponto nas últimas 24h, `Checkpoint-Computer` retorna sucesso mas NÃO
+  // cria nada — silenciosamente. Isso faz parecer que a criação falhou.
+  //
+  // Solução: salvar o valor atual, definir como 0 temporariamente, criar o
+  // ponto, e restaurar o valor original. Assim o usuário sempre consegue
+  // criar um ponto manualmente quando pedir.
+  const script = `
+$ErrorActionPreference = 'Stop'
+
+$regPath = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore'
+$regName = 'SystemRestorePointCreationFrequency'
+
+# Salva o valor original (pode não existir)
+$originalValue = $null
+try {
+  $originalValue = (Get-ItemProperty -Path $regPath -Name $regName -ErrorAction Stop).$regName
+  $hadValue = $true
+} catch {
+  $hadValue = $false
+}
+
+try {
+  # Desabilita o limite de frequência
+  if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+  Set-ItemProperty -Path $regPath -Name $regName -Value 0 -Type DWord -Force -ErrorAction Stop
+
+  # Cria o ponto de restauração
+  Checkpoint-Computer -Description '${safeDescription}' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+
+  [PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+} finally {
+  # Restaura o valor original
+  try {
+    if ($hadValue) {
+      Set-ItemProperty -Path $regPath -Name $regName -Value $originalValue -Type DWord -Force -ErrorAction SilentlyContinue
+    } else {
+      Remove-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue
+    }
+  } catch { /* ignora */ }
+}
+`.trim();
 
   try {
-    await runCommandSmart(script, true, 60000);
+    await runCommandSmart(script, true, 90000);
     return { success: true };
   } catch (error) {
     log.error('[restore:create-point] Erro:', error.message);
@@ -107,6 +152,49 @@ async function enableSystemRestore() {
   } catch (error) {
     log.error('[restore:enable-protection] Erro:', error.message);
     return { success: false, error: 'Falha ao ativar a Proteção do Sistema.' };
+  }
+}
+
+/**
+ * Abre o wizard de restauração do Windows (rstrui.exe) com privilégios
+ * elevados. NÃO aplicamos a restauração programaticamente porque:
+ * 1) Não há rollback se o processo falhar no meio.
+ * 2) A API WMI SystemRestore.Restore() é pouco documentada e não recomendada.
+ * 3) O wizard nativo já oferece: escolha de "manter arquivos pessoais",
+ *    confirmação final antes de reiniciar, aviso sobre programas que serão
+ *    desinstalados e cancelamento antes do ponto de não-retorno.
+ */
+async function openRestoreWizard() {
+  if (os.platform() !== 'win32') {
+    return { success: false, error: 'Disponível apenas no Windows.' };
+  }
+
+  const script = `
+$ErrorActionPreference = 'Stop'
+try {
+  Start-Process 'rstrui.exe' -Verb RunAs -ErrorAction Stop
+  [PSCustomObject]@{ success = $true } | ConvertTo-Json -Compress
+} catch {
+  [PSCustomObject]@{ success = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
+}
+`.trim();
+
+  try {
+    const { stdout } = await runShellCommand(script, 15000);
+    const parsed = JSON.parse((stdout || '{}').trim());
+    if (!parsed.success) {
+      return { success: false, error: parsed.error || 'Falha ao abrir o wizard de restauração.' };
+    }
+    return { success: true };
+  } catch (error) {
+    log.error('[restore:apply-point] Erro:', error.message);
+    const userCancelled = error.message.includes('1223') || error.message.includes('cancelado');
+    return {
+      success: false,
+      error: userCancelled
+        ? 'Você cancelou a permissão de administrador.'
+        : 'Não foi possível abrir o wizard de restauração.'
+    };
   }
 }
 
@@ -150,6 +238,10 @@ function registerRestoreHandlers() {
 
   ipcMain.handle('restore:enable-protection', withLicense(async () => {
     return await enableSystemRestore();
+  }));
+
+    ipcMain.handle('restore:apply-point', withLicense(async () => {
+    return await openRestoreWizard();
   }));
 }
 
