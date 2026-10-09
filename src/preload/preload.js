@@ -34,6 +34,12 @@ const validInvokeChannels = [
   'disk:list-volumes',
   'disk:optimize',
 
+  // Rede / DNS
+  'dns:list-adapters',
+  'dns:test-servers',
+  'dns:apply',
+  'dns:reset',
+
   // Limpeza do Sistema
   'cleanup:get-targets',
   'cleanup:scan',

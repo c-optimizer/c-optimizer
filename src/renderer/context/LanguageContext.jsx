@@ -7,6 +7,7 @@ const translations = {
       presets: 'Presets',
       optimizations: 'Otimizações',
       cleanup: 'Limpeza',
+      network: 'Rede',
       restore: 'Restauração',
       apps: 'Apps',
       settings: 'Configurações',
@@ -99,6 +100,10 @@ const translations = {
         needsAdmin: 'Reinicie o C-Optimizer como Administrador para usar o Modo de Jogo.',
       },
     },
+    network: {
+      title: 'Rede & DNS',
+      subtitle: 'Otimize a latência das suas consultas DNS',
+    },
     cleanup: {
       title: 'Limpeza do Sistema',
       subtitle: 'Libere espaço removendo arquivos desnecessários',
@@ -156,6 +161,7 @@ const translations = {
       presets: 'Presets',
       optimizations: 'Optimizations',
       cleanup: 'Cleanup',
+      network: 'Network',
       restore: 'Restore',
       apps: 'Apps',
       settings: 'Settings',
@@ -248,6 +254,10 @@ const translations = {
         needsAdmin: 'Restart C-Optimizer as Administrator to use Game Mode.',
       },
     },
+    network: {
+      title: 'Network & DNS',
+      subtitle: 'Optimize the latency of your DNS queries',
+    },
     cleanup: {
       title: 'System Cleanup',
       subtitle: 'Free up space by removing unnecessary files',
@@ -305,6 +315,7 @@ const translations = {
       presets: 'Presets',
       optimizations: 'Optimizaciones',
       cleanup: 'Limpieza',
+      network: 'Red',
       restore: 'Restauración',
       apps: 'Aplicaciones',
       settings: 'Configuración',
@@ -396,6 +407,10 @@ const translations = {
         waiting: 'Espera...',
         needsAdmin: 'Reinicia C-Optimizer como Administrador para usar el Modo de Juego.',
       },
+    },
+    network: {
+      title: 'Red y DNS',
+      subtitle: 'Optimiza la latencia de tus consultas DNS',
     },
     cleanup: {
       title: 'Limpieza del Sistema',

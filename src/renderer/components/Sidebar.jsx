@@ -10,7 +10,8 @@ import {
   Settings,
   KeyRound,
   Zap,
-  Rocket
+  Rocket,
+  Network
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -19,6 +20,7 @@ const navItems = [
   { id: 'presets', icon: Rocket, labelKey: 'sidebar.presets' },
   { id: 'optimizations', icon: SlidersHorizontal, labelKey: 'sidebar.optimizations' },
   { id: 'cleanup', icon: Trash2, labelKey: 'sidebar.cleanup' },
+  { id: 'network', icon: Network, labelKey: 'sidebar.network' },        // ← NOVO
   { id: 'system-fixer', icon: Wrench, labelKey: 'sidebar.systemFixer' },
   { id: 'restore', icon: RotateCcw, labelKey: 'sidebar.restore' },
   { id: 'apps', icon: AppWindow, labelKey: 'sidebar.apps' },
