@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "description": "C-Optimizer - Otimização e Manutenção de Sistema Windows",
   "main": "src/main/main.js",
-  "author": "Caio",
+  "author": "Cestari Tech",
   "license": "MIT",
   "scripts": {
     "dev:renderer": "vite",

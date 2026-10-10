@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const validInvokeChannels = [
+  // Onboarding
+  'onboarding:check',
+  'onboarding:complete',
+  'onboarding:reset',
   // Dashboard
   'system:get-stats',
   'system:get-info',
@@ -40,6 +44,14 @@ const validInvokeChannels = [
   'dns:apply',
   'dns:reset',
 
+  // Drivers
+  'drivers:list-problems',
+  'drivers:list-all',
+  'drivers:get-gpus',
+  'drivers:open-url',
+  'drivers:open-device-manager',
+  'drivers:open-windows-update',
+  
   // Limpeza do Sistema
   'cleanup:get-targets',
   'cleanup:scan',
@@ -89,7 +101,12 @@ const validInvokeChannels = [
 
   // Auto-update
   'update:start-download',
-  'update:quit-and-install'
+  'update:quit-and-install',
+  
+  // Configurações (backup/import)
+  'config:export',
+  'config:import',
+  'config:apply-imported-tweaks',
 ];
 
 const validOnChannels = [

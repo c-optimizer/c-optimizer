@@ -23,6 +23,9 @@ const { registerShutdownHandlers } = require('./utils/timerResolution');
 const { registerPresetHandlers } = require('./handlers/presetHandlers');
 const { registerGameModeHandlers, reconcileOnBoot: reconcileGameModeOnBoot } = require('./handlers/gameModeHandlers');
 const { registerDnsHandlers } = require('./handlers/dnsHandlers');
+const { registerDriverHandlers } = require('./handlers/driverHandlers');
+const { registerOnboardingHandlers } = require('./handlers/onboardingHandlers');
+const { registerConfigHandlers } = require('./handlers/configHandlers');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -141,6 +144,9 @@ app.whenReady().then(() => {
   registerPresetHandlers();
   registerGameModeHandlers();
   registerDnsHandlers();
+  registerDriverHandlers();
+  registerOnboardingHandlers();
+  registerConfigHandlers();
 
   createWindow();
 
