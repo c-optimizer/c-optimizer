@@ -7,52 +7,134 @@ const { withLicense } = require('../utils/licenseGuard');
 const { log } = require('../utils/logger');
 
 const WINGET_CATALOG = [
+  // ==========================
   // Runtimes
+  // ==========================
   { id: 'Microsoft.VCRedist.2015+.x64', name: 'Visual C++ Redistributable (x64)', category: 'Runtimes' },
   { id: 'Microsoft.VCRedist.2015+.x86', name: 'Visual C++ Redistributable (x86)', category: 'Runtimes' },
   { id: 'Microsoft.DotNet.DesktopRuntime.8', name: '.NET Desktop Runtime 8', category: 'Runtimes' },
   { id: 'Microsoft.DotNet.DesktopRuntime.6', name: '.NET Desktop Runtime 6', category: 'Runtimes' },
   { id: 'Microsoft.DirectX', name: 'DirectX End-User Runtime', category: 'Runtimes' },
   { id: 'Microsoft.WindowsDesktopApp.Runtime', name: 'Windows Desktop Runtime', category: 'Runtimes' },
+  { id: 'EclipseAdoptium.Temurin.21.JRE', name: 'Java Runtime (Eclipse Temurin 21)', category: 'Runtimes' },
+  { id: 'EclipseAdoptium.Temurin.17.JRE', name: 'Java Runtime (Eclipse Temurin 17)', category: 'Runtimes' },
+  { id: 'Oracle.JavaRuntimeEnvironment', name: 'Java Runtime (Oracle JRE)', category: 'Runtimes' },
+  { id: 'OpenAL.OpenAL', name: 'OpenAL (biblioteca de áudio)', category: 'Runtimes' },
 
+  // ==========================
   // Navegadores
+  // ==========================
   { id: 'Google.Chrome', name: 'Google Chrome', category: 'Navegadores' },
   { id: 'Mozilla.Firefox', name: 'Mozilla Firefox', category: 'Navegadores' },
   { id: 'Brave.Brave', name: 'Brave Browser', category: 'Navegadores' },
-  { id: 'Opera.OperaGX', name: 'Opera GX', category: 'Navegadores' },
+  { id: 'Opera.OperaGX', name: 'Opera GX (para gamers)', category: 'Navegadores' },
+  { id: 'Microsoft.Edge', name: 'Microsoft Edge', category: 'Navegadores' },
 
+  // ==========================
   // Comunicação
+  // ==========================
   { id: 'Discord.Discord', name: 'Discord', category: 'Comunicação' },
   { id: 'WhatsApp.WhatsApp', name: 'WhatsApp Desktop', category: 'Comunicação' },
   { id: 'Telegram.TelegramDesktop', name: 'Telegram Desktop', category: 'Comunicação' },
   { id: 'Zoom.Zoom', name: 'Zoom', category: 'Comunicação' },
   { id: 'SlackTechnologies.Slack', name: 'Slack', category: 'Comunicação' },
   { id: 'Microsoft.Teams', name: 'Microsoft Teams', category: 'Comunicação' },
+  { id: 'TeamSpeak.TeamSpeak', name: 'TeamSpeak 3', category: 'Comunicação' },
+  { id: 'Mumble.Mumble', name: 'Mumble (voz open-source)', category: 'Comunicação' },
+  { id: 'Signal.Signal', name: 'Signal Desktop', category: 'Comunicação' },
+  { id: 'Element.Element', name: 'Element (Matrix)', category: 'Comunicação' },
 
-  // Mídia
+  // ==========================
+  // Mídia / Streaming / Música
+  // ==========================
   { id: 'OBSProject.OBSStudio', name: 'OBS Studio', category: 'Mídia' },
   { id: 'VideoLAN.VLC', name: 'VLC Media Player', category: 'Mídia' },
   { id: 'Spotify.Spotify', name: 'Spotify', category: 'Mídia' },
+  { id: 'Deezer.Deezer', name: 'Deezer Desktop', category: 'Mídia' },
   { id: 'GIMP.GIMP', name: 'GIMP', category: 'Mídia' },
   { id: 'Audacity.Audacity', name: 'Audacity', category: 'Mídia' },
+  { id: 'AIMP.AIMP', name: 'AIMP (player de música leve)', category: 'Mídia' },
+  { id: 'PeterPawlowski.foobar2000', name: 'foobar2000', category: 'Mídia' },
+  { id: 'Streamlabs.Streamlabs', name: 'Streamlabs Desktop', category: 'Mídia' },
+  { id: 'Twitch.TwitchStudio', name: 'Twitch Studio', category: 'Mídia' },
 
-  // Jogos
+  // ==========================
+  // Jogos / Launchers
+  // ==========================
   { id: 'Valve.Steam', name: 'Steam', category: 'Jogos' },
   { id: 'EpicGames.EpicGamesLauncher', name: 'Epic Games Launcher', category: 'Jogos' },
   { id: 'GOG.Galaxy', name: 'GOG Galaxy', category: 'Jogos' },
-  { id: 'Nvidia.GeForceExperience', name: 'NVIDIA GeForce Experience', category: 'Jogos' },
+  { id: 'Ubisoft.Connect', name: 'Ubisoft Connect', category: 'Jogos' },
+  { id: 'RockstarGames.Launcher', name: 'Rockstar Games Launcher', category: 'Jogos' },
   { id: 'ElectronicArts.EADesktop', name: 'EA Desktop', category: 'Jogos' },
+  { id: 'Blizzard.BattleNet', name: 'Battle.net (Blizzard)', category: 'Jogos' },
+  { id: 'Nvidia.GeForceExperience', name: 'NVIDIA GeForce Experience', category: 'Jogos' },
+  { id: 'Nvidia.App', name: 'NVIDIA App (novo)', category: 'Jogos' },
+  { id: 'Playnite.Playnite', name: 'Playnite (biblioteca unificada)', category: 'Jogos' },
+  { id: 'Sony.PlayStationPlus', name: 'PlayStation Plus', category: 'Jogos' },
 
+  // ==========================
   // Utilitários
+  // ==========================
   { id: '7zip.7zip', name: '7-Zip', category: 'Utilitários' },
   { id: 'RARLab.WinRAR', name: 'WinRAR', category: 'Utilitários' },
+  { id: 'PeaZip.PeaZip', name: 'PeaZip', category: 'Utilitários' },
   { id: 'Notepad++.Notepad++', name: 'Notepad++', category: 'Utilitários' },
-  { id: 'Rufus.Rufus', name: 'Rufus (criador de pendrive bootável)', category: 'Utilitários' },
+  { id: 'Rufus.Rufus', name: 'Rufus (pendrive bootável)', category: 'Utilitários' },
+  { id: 'Ventoy.Ventoy', name: 'Ventoy (multi-boot USB)', category: 'Utilitários' },
   { id: 'CPUID.CPU-Z', name: 'CPU-Z', category: 'Utilitários' },
   { id: 'TechPowerUp.GPU-Z', name: 'GPU-Z', category: 'Utilitários' },
+  { id: 'REALiX.HWiNFO', name: 'HWiNFO (monitoramento avançado)', category: 'Utilitários' },
+  { id: 'CPUID.HWMonitor', name: 'HWMonitor', category: 'Utilitários' },
   { id: 'CrystalDewWorld.CrystalDiskInfo', name: 'CrystalDiskInfo', category: 'Utilitários' },
+  { id: 'CrystalDewWorld.CrystalDiskMark', name: 'CrystalDiskMark (benchmark de disco)', category: 'Utilitários' },
   { id: 'ShareX.ShareX', name: 'ShareX (captura de tela)', category: 'Utilitários' },
+  { id: 'Greenshot.Greenshot', name: 'Greenshot (captura de tela)', category: 'Utilitários' },
+  { id: 'QL-Win.QuickLook', name: 'QuickLook (preview com Espaço)', category: 'Utilitários' },
+  { id: 'voidtools.Everything', name: 'Everything (busca instantânea de arquivos)', category: 'Utilitários' },
+  { id: 'AntibodySoftware.WizTree', name: 'WizTree (analisador de disco)', category: 'Utilitários' },
   { id: 'Bitwarden.Bitwarden', name: 'Bitwarden (gerenciador de senhas)', category: 'Utilitários' },
+  { id: 'KeePassXCTeam.KeePassXC', name: 'KeePassXC', category: 'Utilitários' },
+  { id: 'FxSound.FxSound', name: 'FxSound (melhorador de áudio)', category: 'Utilitários' },
+  { id: 'EqualizerAPO.EqualizerAPO', name: 'EqualizerAPO', category: 'Utilitários' },
+  { id: 'VB-Audio.Voicemeeter', name: 'Voicemeeter (mixer de áudio)', category: 'Utilitários' },
+  { id: 'AutoHotkey.AutoHotkey', name: 'AutoHotkey (automação)', category: 'Utilitários' },
+  { id: 'Microsoft.PowerToys', name: 'Microsoft PowerToys', category: 'Utilitários' },
+  { id: 'Ditto.Ditto', name: 'Ditto (histórico de clipboard)', category: 'Utilitários' },
+  { id: 'File-New-Project.EarTrumpet', name: 'EarTrumpet (mixer por app)', category: 'Utilitários' },
+  { id: 'TranslucentTB.TranslucentTB', name: 'TranslucentTB', category: 'Utilitários' },
+  { id: 'Nilesoft.Shell', name: 'Nilesoft Shell (menu de contexto)', category: 'Utilitários' },
+
+  // ==========================
+  // Gaming Tools
+  // ==========================
+  { id: 'Nefarius.DsHidMini', name: 'DsHidMini (controle PS3/PS4 no PC)', category: 'Gaming Tools' },
+  { id: 'Ryochan7.DS4Windows', name: 'DS4Windows (DualShock no PC)', category: 'Gaming Tools' },
+  { id: 'Guru3D.Afterburner', name: 'MSI Afterburner', category: 'Gaming Tools' },
+  { id: 'Rem0o.FanControl', name: 'Fan Control (curvas de fan)', category: 'Gaming Tools' },
+  { id: 'NexusMods.Vortex', name: 'Vortex (mods Nexus)', category: 'Gaming Tools' },
+  { id: 'ModOrganizer.ModOrganizer2', name: 'Mod Organizer 2', category: 'Gaming Tools' },
+
+  // ==========================
+  // Desenvolvimento
+  // ==========================
+  { id: 'Microsoft.VisualStudioCode', name: 'Visual Studio Code', category: 'Desenvolvimento' },
+  { id: 'Git.Git', name: 'Git', category: 'Desenvolvimento' },
+  { id: 'OpenJS.NodeJS.LTS', name: 'Node.js LTS', category: 'Desenvolvimento' },
+  { id: 'Python.Python.3.12', name: 'Python 3.12', category: 'Desenvolvimento' },
+  { id: 'Docker.DockerDesktop', name: 'Docker Desktop', category: 'Desenvolvimento' },
+  { id: 'Postman.Postman', name: 'Postman', category: 'Desenvolvimento' },
+  { id: 'dbeaver.dbeaver', name: 'DBeaver (cliente SQL)', category: 'Desenvolvimento' },
+
+  // ==========================
+  // Criatividade
+  // ==========================
+  { id: 'KDE.Krita', name: 'Krita (pintura digital)', category: 'Criatividade' },
+  { id: 'Inkscape.Inkscape', name: 'Inkscape (vetorial)', category: 'Criatividade' },
+  { id: 'BlenderFoundation.Blender', name: 'Blender', category: 'Criatividade' },
+  { id: 'Canva.Canva', name: 'Canva Desktop', category: 'Criatividade' },
+  { id: 'KDE.Kdenlive', name: 'Kdenlive (edição de vídeo)', category: 'Criatividade' },
+  { id: 'HandBrake.HandBrake', name: 'HandBrake (conversor de vídeo)', category: 'Criatividade' },
 ];
 
 /**

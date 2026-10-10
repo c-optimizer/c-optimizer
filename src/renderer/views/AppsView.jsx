@@ -6,7 +6,17 @@ import {
 import CardOption from '../components/CardOption';
 import { useLanguage } from '../context/LanguageContext';
 
-const CATEGORY_ORDER = ['Runtimes', 'Navegadores', 'Comunicação', 'Mídia', 'Jogos', 'Utilitários'];
+const CATEGORY_ORDER = [
+  'Runtimes',
+  'Navegadores',
+  'Comunicação',
+  'Mídia',
+  'Jogos',
+  'Gaming Tools',
+  'Utilitários',
+  'Desenvolvimento',
+  'Criatividade',
+];
 
 function InstallTab() {
   const [wingetAvailable, setWingetAvailable] = useState(true);

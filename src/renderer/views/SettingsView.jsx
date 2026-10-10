@@ -81,6 +81,8 @@ function SettingsView() {
   const [changelogError, setChangelogError] = useState(null);
 
   // configMsg agora armazena um DESCRITOR (não string pré-formatada).
+  const [exportingConfig, setExportingConfig] = useState(false);
+  const [importingConfig, setImportingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState(null);
   const [pendingTweaks, setPendingTweaks] = useState(null);
   const [applyingTweaks, setApplyingTweaks] = useState(false);

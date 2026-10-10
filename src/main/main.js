@@ -164,6 +164,11 @@ app.whenReady().then(() => {
   });
 });
 
+if (process.env.NODE_ENV === 'development') {
+  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+  app.commandLine.appendSwitch('disable-http-cache');
+}
+
 app.on('window-all-closed', () => {
   log.info('Encerrando C-Optimizer.');
   destroyTray();
