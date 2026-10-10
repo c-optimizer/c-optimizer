@@ -16,9 +16,9 @@ function CardOption({ icon: Icon, title, description, tags = [], enabled, onTogg
             {/* Altura mínima fixa em vez de line-clamp (compatível com qualquer
                 versão do Tailwind — line-clamp só existe nativo a partir do 3.3).
                 Reserva 3 linhas de texto-xs (leading-relaxed): ~3rem. */}
-            <p
+                        <p
               className="text-slate-400 text-xs mt-1 leading-relaxed"
-              style={{ minHeight: '3rem', maxHeight: '3rem', overflow: 'hidden' }}
+              style={{ minHeight: '3rem' }}
             >
               {description}
             </p>

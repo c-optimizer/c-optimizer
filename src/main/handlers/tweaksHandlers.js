@@ -3146,9 +3146,8 @@ try {
       script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-New-ItemProperty -LiteralPath $path -Name "TaskbarDa" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarDa /t REG_DWORD /d 0 /f | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "reg add falhou com codigo $LASTEXITCODE" }
 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 Start-Process explorer.exe
@@ -3172,13 +3171,11 @@ try {
       script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-$name = "TaskbarDa"
-if ($snapshotExists -eq $true) {
-  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop | Out-Null
+$key = "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+if ($snapshotExists -eq $true -and $null -ne $snapshotValue) {
+  reg add $key /v TaskbarDa /t REG_DWORD /d $snapshotValue /f | Out-Null
 } else {
-  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  reg delete $key /v TaskbarDa /f 2>$null | Out-Null
 }
 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
@@ -3217,9 +3214,8 @@ try {
       script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-New-ItemProperty -LiteralPath $path -Name "TaskbarMn" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarMn /t REG_DWORD /d 0 /f | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "reg add falhou com codigo $LASTEXITCODE" }
 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
 Start-Process explorer.exe
@@ -3243,13 +3239,11 @@ try {
       script: `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$path = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"
-$name = "TaskbarMn"
-if ($snapshotExists -eq $true) {
-  if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
-  New-ItemProperty -LiteralPath $path -Name $name -PropertyType DWord -Value $snapshotValue -Force -ErrorAction Stop | Out-Null
+$key = "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+if ($snapshotExists -eq $true -and $null -ne $snapshotValue) {
+  reg add $key /v TaskbarMn /t REG_DWORD /d $snapshotValue /f | Out-Null
 } else {
-  Remove-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  reg delete $key /v TaskbarMn /f 2>$null | Out-Null
 }
 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 800
@@ -3259,6 +3253,134 @@ Start-Process explorer.exe
     commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
   },
 
+  {
+    id: 'disable-web-search',
+    category: 'Privacidade',
+    title: 'Desativar Busca na Web (Menu Iniciar)',
+    description: 'Remove resultados do Bing e da web do menu Iniciar. A busca continua funcionando apenas para arquivos, apps e configurações locais.',
+    risk: 'low',
+    requiresAdmin: false,
+    createsBackup: true,
+    engine: 'snapshot',
+    read: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $p1 = "HKCU:\\Software\\Policies\\Microsoft\\Windows\\Explorer"
+  $p2 = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+  $result = [ordered]@{
+    DisableSearchBoxSuggestions = Read-RegValue $p1 "DisableSearchBoxSuggestions"
+    BingSearchEnabled           = Read-RegValue $p2 "BingSearchEnabled"
+    CortanaConsent              = Read-RegValue $p2 "CortanaConsent"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `
+    },
+    apply: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  $p1 = "HKCU:\\Software\\Policies\\Microsoft\\Windows\\Explorer"
+  if (-not (Test-Path $p1)) { New-Item -Path $p1 -Force | Out-Null }
+  reg add "HKCU\\Software\\Policies\\Microsoft\\Windows\\Explorer" /v DisableSearchBoxSuggestions /t REG_DWORD /d 1 /f | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "reg add DisableSearchBoxSuggestions falhou" }
+
+  $p2 = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+  if (-not (Test-Path $p2)) { New-Item -Path $p2 -Force | Out-Null }
+  reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" /v BingSearchEnabled /t REG_DWORD /d 0 /f | Out-Null
+  reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" /v CortanaConsent /t REG_DWORD /d 0 /f | Out-Null
+
+  Stop-Process -Name SearchHost -Force -ErrorAction SilentlyContinue
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    verify: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Read-RegValue($path, $name) {
+  if (-not (Test-Path -LiteralPath $path)) { return $null }
+  $item = Get-ItemProperty -LiteralPath $path -Name $name -ErrorAction SilentlyContinue
+  if ($null -eq $item -or $null -eq $item.$name) { return $null }
+  return $item.$name
+}
+try {
+  $p1 = "HKCU:\\Software\\Policies\\Microsoft\\Windows\\Explorer"
+  $p2 = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Search"
+  $result = [ordered]@{
+    DisableSearchBoxSuggestions = Read-RegValue $p1 "DisableSearchBoxSuggestions"
+    BingSearchEnabled           = Read-RegValue $p2 "BingSearchEnabled"
+    CortanaConsent              = Read-RegValue $p2 "CortanaConsent"
+  }
+  $anyExists = $result.Values | Where-Object { $null -ne $_ } | Measure-Object | Select-Object -ExpandProperty Count
+  [PSCustomObject]@{ success=$true; exists=($anyExists -gt 0); value=$result } | ConvertTo-Json -Compress -Depth 5
+} catch {
+  [PSCustomObject]@{ success=$false; exists=$false; value=$null; error=$_.Exception.Message } | ConvertTo-Json -Compress
+}
+      `,
+      expected: {
+        exists: true,
+        value: {
+          DisableSearchBoxSuggestions: 1,
+          BingSearchEnabled: 0,
+          CortanaConsent: 0
+        }
+      }
+    },
+    restore: {
+      script: `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+function Restore-RegValue($path, $name, $val) {
+  if ($null -eq $val) {
+    reg delete $path /v $name /f 2>$null | Out-Null
+  } else {
+    reg add $path /v $name /t REG_DWORD /d $val /f | Out-Null
+  }
+}
+try {
+  if ($snapshotExists -eq $true) {
+    Restore-RegValue "HKCU\\Software\\Policies\\Microsoft\\Windows\\Explorer" "DisableSearchBoxSuggestions" $snapshotValue.DisableSearchBoxSuggestions
+    Restore-RegValue "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" "BingSearchEnabled" $snapshotValue.BingSearchEnabled
+    Restore-RegValue "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" "CortanaConsent" $snapshotValue.CortanaConsent
+  } else {
+    reg delete "HKCU\\Software\\Policies\\Microsoft\\Windows\\Explorer" /v DisableSearchBoxSuggestions /f 2>$null | Out-Null
+    reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" /v BingSearchEnabled /f 2>$null | Out-Null
+    reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search" /v CortanaConsent /f 2>$null | Out-Null
+  }
+
+  Stop-Process -Name SearchHost -Force -ErrorAction SilentlyContinue
+  Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+  Start-Process explorer.exe
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+      `
+    },
+    commands: { linux: { apply: `echo "simulado"`, revert: `echo "simulado"` } }
+  },
+
+  
 ];
 
 /**

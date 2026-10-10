@@ -46,6 +46,7 @@ const ICON_MAP = {
   'services-manual-profile': Settings2,
   'hide-widgets-win11': LayoutGrid,
   'hide-chat-win11': MessageSquare,
+  'disable-web-search': Search,
 };
 
 const CATEGORIES = ['Todas', 'Gaming', 'GPU', 'Rede', 'Privacidade', 'Performance'];

@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { withLicense } = require('../utils/licenseGuard');
+const { isRunningAsAdmin } = require('../utils/shell');
 const { log } = require('../utils/logger');
 
 const WINGET_CATALOG = [
@@ -49,14 +50,12 @@ const WINGET_CATALOG = [
   // ==========================
   { id: 'OBSProject.OBSStudio', name: 'OBS Studio', category: 'Mídia' },
   { id: 'VideoLAN.VLC', name: 'VLC Media Player', category: 'Mídia' },
-  { id: 'Spotify.Spotify', name: 'Spotify', category: 'Mídia' },
+  { id: 'Spotify.Spotify', name: 'Spotify', category: 'Mídia', requiresUserContext: true },
   { id: 'Deezer.Deezer', name: 'Deezer Desktop', category: 'Mídia' },
   { id: 'GIMP.GIMP', name: 'GIMP', category: 'Mídia' },
   { id: 'Audacity.Audacity', name: 'Audacity', category: 'Mídia' },
-  { id: 'AIMP.AIMP', name: 'AIMP (player de música leve)', category: 'Mídia' },
   { id: 'PeterPawlowski.foobar2000', name: 'foobar2000', category: 'Mídia' },
   { id: 'Streamlabs.Streamlabs', name: 'Streamlabs Desktop', category: 'Mídia' },
-  { id: 'Twitch.TwitchStudio', name: 'Twitch Studio', category: 'Mídia' },
 
   // ==========================
   // Jogos / Launchers
@@ -67,9 +66,8 @@ const WINGET_CATALOG = [
   { id: 'Ubisoft.Connect', name: 'Ubisoft Connect', category: 'Jogos' },
   { id: 'RockstarGames.Launcher', name: 'Rockstar Games Launcher', category: 'Jogos' },
   { id: 'ElectronicArts.EADesktop', name: 'EA Desktop', category: 'Jogos' },
-  { id: 'Blizzard.BattleNet', name: 'Battle.net (Blizzard)', category: 'Jogos' },
-  { id: 'Nvidia.GeForceExperience', name: 'NVIDIA GeForce Experience', category: 'Jogos' },
-  { id: 'Nvidia.App', name: 'NVIDIA App (novo)', category: 'Jogos' },
+  { id: 'Blizzard.BattleNet', name: 'Battle.net (Blizzard)', category: 'Jogos', batchUnsafe: true, note: 'Requer caminho de instalação. Instale manualmente.' },
+  { id: 'Nvidia.App', name: 'NVIDIA App', category: 'Jogos' },
   { id: 'Playnite.Playnite', name: 'Playnite (biblioteca unificada)', category: 'Jogos' },
   { id: 'Sony.PlayStationPlus', name: 'PlayStation Plus', category: 'Jogos' },
 
@@ -102,8 +100,8 @@ const WINGET_CATALOG = [
   { id: 'Microsoft.PowerToys', name: 'Microsoft PowerToys', category: 'Utilitários' },
   { id: 'Ditto.Ditto', name: 'Ditto (histórico de clipboard)', category: 'Utilitários' },
   { id: 'File-New-Project.EarTrumpet', name: 'EarTrumpet (mixer por app)', category: 'Utilitários' },
-  { id: 'TranslucentTB.TranslucentTB', name: 'TranslucentTB', category: 'Utilitários' },
   { id: 'Nilesoft.Shell', name: 'Nilesoft Shell (menu de contexto)', category: 'Utilitários' },
+  { id: 'Lightshot.Lightshot', name: 'Lightshot (captura de tela rápida)', category: 'Utilitários' },
 
   // ==========================
   // Gaming Tools
@@ -114,6 +112,7 @@ const WINGET_CATALOG = [
   { id: 'Rem0o.FanControl', name: 'Fan Control (curvas de fan)', category: 'Gaming Tools' },
   { id: 'NexusMods.Vortex', name: 'Vortex (mods Nexus)', category: 'Gaming Tools' },
   { id: 'ModOrganizer.ModOrganizer2', name: 'Mod Organizer 2', category: 'Gaming Tools' },
+  { id: 'AMD.RyzenMaster', name: 'AMD Ryzen Master', category: 'Gaming Tools' },
 
   // ==========================
   // Desenvolvimento
@@ -124,7 +123,7 @@ const WINGET_CATALOG = [
   { id: 'Python.Python.3.12', name: 'Python 3.12', category: 'Desenvolvimento' },
   { id: 'Docker.DockerDesktop', name: 'Docker Desktop', category: 'Desenvolvimento' },
   { id: 'Postman.Postman', name: 'Postman', category: 'Desenvolvimento' },
-  { id: 'dbeaver.dbeaver', name: 'DBeaver (cliente SQL)', category: 'Desenvolvimento' },
+  { id: 'dbeaver.dbeaver-ce', name: 'DBeaver Community (cliente SQL)', category: 'Desenvolvimento' },
 
   // ==========================
   // Criatividade
@@ -143,13 +142,11 @@ const WINGET_CATALOG = [
  * mesmo quando o winget está instalado em %LOCALAPPDATA%\Microsoft\WindowsApps.
  */
 function isWingetAvailable() {
-  // 1) PATH global.
   try {
     execSync('winget --version', { stdio: 'ignore', windowsHide: true });
     return true;
   } catch { /* continua */ }
 
-  // 2) Path padrão do App Installer no Windows 10/11.
   const localAppData = process.env.LOCALAPPDATA;
   if (localAppData) {
     const candidate = path.join(localAppData, 'Microsoft', 'WindowsApps', 'winget.exe');
@@ -161,8 +158,34 @@ function isWingetAvailable() {
   return false;
 }
 
-function installApp(appId, window) {
+/**
+ * Instala um app via winget respeitando flags do catálogo:
+ *  - batchUnsafe:        requer input interativo (caminho de instalação). Pulado em lote.
+ *  - requiresUserContext: falha sob admin (ex: Spotify). Pulado se o app está elevado.
+ *  - Timeout de 5min por app: evita travar a fila em app que espera input.
+ */
+function installApp(appId, window, catalogEntry) {
   return new Promise((resolve) => {
+    if (catalogEntry?.batchUnsafe) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('winget:progress', {
+          appId,
+          line: `[${appId}] Pulado: requer instalação manual (exige input/caminho).`,
+        });
+      }
+      return resolve({ appId, success: false, skipped: true, error: 'Requer instalação manual.' });
+    }
+
+    if (catalogEntry?.requiresUserContext && isRunningAsAdmin()) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('winget:progress', {
+          appId,
+          line: `[${appId}] Pulado: este instalador não funciona em contexto administrativo. Execute o C-Optimizer sem admin para instalá-lo.`,
+        });
+      }
+      return resolve({ appId, success: false, skipped: true, error: 'Requer execução sem admin.' });
+    }
+
     const args = ['install', '--id', appId, '-e', '--silent', '--accept-source-agreements', '--accept-package-agreements'];
     const child = spawn('winget', args, { windowsHide: true, shell: true });
 
@@ -175,13 +198,28 @@ function installApp(appId, window) {
     child.stdout?.on('data', emit);
     child.stderr?.on('data', emit);
 
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch { /* ignora */ }
+      emit(`[${appId}] Timeout: instalação não concluída em 5 minutos.`);
+      resolve({ appId, success: false, error: 'Timeout após 5 minutos.' });
+    }, 5 * 60 * 1000);
+
     child.on('close', (code) => {
-      // 0 = sucesso. -1978335189 = "já instalado" (não é erro).
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       if (code === 0 || code === -1978335189) resolve({ appId, success: true });
       else resolve({ appId, success: false, error: `winget saiu com código ${code}` });
     });
 
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       log.error(`[winget] Erro ao instalar "${appId}":`, err.message);
       resolve({ appId, success: false, error: err.message });
     });
@@ -196,9 +234,6 @@ function registerWingetHandlers() {
 
   ipcMain.handle('winget:get-catalog', async () => WINGET_CATALOG);
 
-  // Abre a página do "App Installer" na Microsoft Store. É o pacote que
-  // fornece o winget no Windows 10. O `ms-windows-store://` é um protocolo
-  // registrado pelo próprio Windows, não precisa de permissão especial.
   ipcMain.handle('winget:open-installer', withLicense(async () => {
     if (os.platform() !== 'win32') {
       return { success: false, error: 'Disponível apenas no Windows.' };
@@ -226,15 +261,19 @@ function registerWingetHandlers() {
     const window = BrowserWindow.fromWebContents(event.sender);
     const results = [];
     for (const appId of appIds) {
-      const result = await installApp(appId, window);
+      const catalogEntry = WINGET_CATALOG.find((a) => a.id === appId);
+      const result = await installApp(appId, window, catalogEntry);
       results.push(result);
     }
 
-    const failed = results.filter((r) => !r.success);
+    const failed = results.filter((r) => !r.success && !r.skipped);
+    const skipped = results.filter((r) => r.skipped);
+
     return {
       success: failed.length === 0,
       installed: results.filter((r) => r.success).map((r) => r.appId),
-      failed
+      skipped: skipped.map((r) => ({ appId: r.appId, reason: r.error })),
+      failed,
     };
   }));
 }
